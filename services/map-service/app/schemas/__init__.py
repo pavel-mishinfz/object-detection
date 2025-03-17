@@ -1,4 +1,4 @@
-from .area import Area, AreaIn
+from .area import Area, AreaSummary, AreaIn, AreaUpdate
 
 
-__all__ = [Area, AreaIn]
+__all__ = [Area, AreaSummary, AreaIn, AreaUpdate]
