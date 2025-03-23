@@ -10,6 +10,18 @@ class Config(BaseSettings):
         alias='POSTGRES_DSN_ASYNC'
     )
 
+    client_id: str = Field(
+        default='client_id',
+        env='CLIENT_ID',
+        alias='CLIENT_ID'
+    )
+
+    client_secret: SecretStr = Field(
+        default='client_secret',
+        env='CLIENT_SECRET',
+        alias='CLIENT_SECRET'
+    )
+
     model_config = SettingsConfigDict(env_file=".env", extra='allow')
 
     @classmethod
