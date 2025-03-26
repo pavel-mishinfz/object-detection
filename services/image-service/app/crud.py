@@ -10,7 +10,7 @@ from .database import models
 
 async def get_coordinates_by_area_id(
         db: AsyncSession, area_id: uuid.UUID
-) -> bytes:
+) -> bytes | None:
     """
     Возвращает координаты полигона в виде WKB
     """
