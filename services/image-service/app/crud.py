@@ -6,24 +6,19 @@ from sqlalchemy import delete, select, update, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import models
+from .schemas import ImageIn
 
 
-async def get_coordinates_by_area_id(
-        db: AsyncSession, area_id: uuid.UUID
-) -> bytes | None:
+async def create_image(
+        db: AsyncSession, image_in: ImageIn
+) -> models.Image:
     """
-    Возвращает координаты полигона в виде WKB
+    Создает запись о снимке в БД
     """
-    query = text("""
-        SELECT geometry
-        FROM area
-        WHERE id = :area_id
-    """)
-    result = await db.execute(query, {"area_id": str(area_id)})
-    row = result.fetchone()
+    db_image = models.Image(**image_in.model_dump())
 
-    if not row:
-        return None
+    db.add(db_image)
+    await db.commit()
+    await db.refresh(db_image)
 
-    wkb_data = row[0]
-    return wkb_data
+    return db_image
