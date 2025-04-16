@@ -16,7 +16,7 @@ from sentinelhub import (
     bbox_to_dimensions,
     BBoxSplitter
 )
-from shapely import wkb
+from shapely.geometry import shape
 
 from .database import DB_INITIALIZER, get_async_session
 from .schemas import PolygonMeta, ImageIn, Image
@@ -46,7 +46,7 @@ async def load_images(
         db: AsyncSession = Depends(get_async_session)
 ):
 
-    geometry = wkb.loads(polygon_meta.geometry_wkb)
+    geometry = shape(polygon_meta.geometry_geojson)
     min_x, min_y, max_x, max_y = geometry.bounds
 
     resolution = polygon_meta.resolution
@@ -111,7 +111,7 @@ async def get_sentinel_image(
         ],
 
         responses=[
-            SentinelHubRequest.output_response("default", MimeType.TIFF)
+            SentinelHubRequest.output_response("default", MimeType.PNG)
         ],
         bbox=bbox,
         size=size,
@@ -136,7 +136,7 @@ async def get_evalscript() -> str:
         }
 
         function evaluatePixel(sample) {
-            return [2.5 * sample.B04, 2.5 * sample.B03, 2.5 * sample.B02]; // увеличение яркости
+            return [3.5 * sample.B04, 3.5 * sample.B03, 3.5 * sample.B02]; // увеличение яркости
         }
     """
     return evalscript
