@@ -44,17 +44,17 @@ CLASSES_BY_ID = {
     id: (rgb, name) for rgb, (id, name) in CLASSES.items()
 }
 
-ENCODER = 'resnet101'
+ENCODER = 'resnet34'
 ENCODER_WEIGHTS = 'imagenet'
 ACTIVATION = None
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 EPOCHS = 30
-BATCH_SIZE = 1
-INIT_LR = 0.00005
-LR_DECREASE_STEP = 15
+BATCH_SIZE = 16
+INIT_LR = 0.0005
+LR_DECREASE_STEP = 10
 LR_DECREASE_COEF = 2
-PATCH_SIZE = 2432
+PATCH_SIZE = 1024
 
 
 preprocessing = T.Compose([
@@ -81,23 +81,21 @@ def get_subimages_generator(
 
 
 def save_dataset_subimages():
-    images_paths = glob(os.path.join(DATASET_DIR, "*_sat.jpg"))
-    masks_paths = glob(os.path.join(DATASET_DIR, "*_mask.png"))
+    images_paths = sorted(glob(os.path.join(DATASET_DIR, "*_sat.jpg")))[:400]
+    masks_paths = sorted(glob(os.path.join(DATASET_DIR, "*_mask.png")))[:400]
 
     for i, (image_path, mask_path) in enumerate(zip(images_paths, masks_paths)):
-        image = Image.open(image_path).crop(box=(8, 8, 2448 - 8, 2448 - 8))
-        image_labeled = Image.open(mask_path).crop(box=(8, 8, 2448 - 8, 2448 - 8))
+        image = Image.open(image_path).crop(box=(200, 200, 2448 - 200, 2448 - 200))
+        image_labeled = Image.open(mask_path).crop(box=(200, 200, 2448 - 200, 2448 - 200))
 
-        image.save(fp=f'dataset_{PATCH_SIZE}/originals/image_{i}.jpg')
-        image_labeled.save(fp=f'dataset_{PATCH_SIZE}/labeleds/image_labeled_{i}.png')
-        # subimages = get_subimages_generator(image=image, subimage_size=(PATCH_SIZE, PATCH_SIZE))
-        # subimages_labeleds = get_subimages_generator(image=image_labeled, subimage_size=(PATCH_SIZE, PATCH_SIZE))
-        #
-        # for si, subimage in enumerate(subimages):
-        #     subimage_labeled = next(subimages_labeleds)
-        #
-        #     subimage.save(fp=f'dataset_{PATCH_SIZE}/originals/i{i}si{si}.jpg')
-        #     subimage_labeled.save(fp=f'dataset_{PATCH_SIZE}/labeleds/i{i}si{si}_labeled.png')
+        subimages = get_subimages_generator(image=image, subimage_size=(PATCH_SIZE, PATCH_SIZE))
+        subimages_labeleds = get_subimages_generator(image=image_labeled, subimage_size=(PATCH_SIZE, PATCH_SIZE))
+
+        for si, subimage in enumerate(subimages):
+            subimage_labeled = next(subimages_labeleds)
+
+            subimage.save(fp=f'dataset_{PATCH_SIZE}/originals/i{i}si{si}.jpg')
+            subimage_labeled.save(fp=f'dataset_{PATCH_SIZE}/labeleds/i{i}si{si}_labeled.png')
 
 
 def get_image_mask_from_labeled(
@@ -194,7 +192,7 @@ class DeepGlobeDataset(Dataset):
         return len(self.images_paths)
 
 
-# save_dataset_subimages()
+save_dataset_subimages()
 
 images_paths = glob(f'dataset_{PATCH_SIZE}/originals/*')
 masks_paths = glob(f'dataset_{PATCH_SIZE}/labeleds/*')
@@ -297,7 +295,7 @@ for i in range(0, EPOCHS):
     # do something (save model, change lr, etc.)
     if max_score < valid_logs['iou_score']:
         max_score = valid_logs['iou_score']
-        torch.save(model, 'models/deepglobe_unet_v2.pth')
+        torch.save(model, 'models/deepglobe_unet_v3.pth')
         print('Model saved!')
 
     print("LR:", optimizer.param_groups[0]['lr'])
@@ -320,7 +318,7 @@ plt.tight_layout()
 plt.show()
 
 
-model = torch.load('models/deepglobe_unet_v2.pth', weights_only=False)
+model = torch.load('models/deepglobe_unet_v3.pth', weights_only=False)
 model = model.to(DEVICE)
 model.eval()
 
