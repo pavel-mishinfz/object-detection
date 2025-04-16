@@ -1,356 +1,293 @@
+# Basic python and ML Libraries
 import os
-import random
 from glob import glob
-from typing import Tuple, List, Dict, Any, Generator
+import numpy as np
 
 import cv2
-from PIL import Image
-import torch
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset
-import torchvision.transforms as T
 
-import segmentation_models_pytorch as smp
-from segmentation_models_pytorch import utils
+# matplotlib for visualization
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+
+# torchvision libraries
+import torch
+from torch.utils.data import Dataset, DataLoader
+import torchvision
+from torchvision import transforms as T
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+
 from sklearn.model_selection import train_test_split
 
-import numpy as np
-import matplotlib.pyplot as plt
+import albumentations as A
+from albumentations import ToTensorV2
 
-seed = 42
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
-torch.cuda.manual_seed_all(seed)
-np.random.seed(seed)
-random.seed(seed)
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
+# defining the files directory and testing directory
+CLASSES = [
+    "airplane", "airport", "baseballfield", "basketballcourt", "bridge",
+    "chimney", "dam", "Expressway-Service-area", "Expressway-toll-station",
+    "golffield", "groundtrackfield", "harbor", "overpass", "ship",
+    "stadium", "storagetank", "tenniscourt", "trainstation", "vehicle",
+    "windmill", "none"
+]
 
-DATASET_NAME = "DeepGlobe"
-DATASET_DIR = f"D:/mishinpa/datasets/{DATASET_NAME}/train/"
+TRAIN_IMAGES_DIR = 'D:/mishinpa/datasets/DIOR/images/train'
+TRAIN_LABELS_DIR = 'D:/mishinpa/datasets/DIOR/labels/train'
+WIDTH = 800
+HEIGHT = 800
+DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-CLASSES = {
-    (0, 0, 0): (0, 'background'),               # black
-    (0, 255, 255): (1, 'urban_land'),           # cyan
-    (255, 255, 0): (2, 'agriculture_land'),     # yellow
-    (255, 0, 255): (3, 'rangeland'),            # magenta
-    (0, 255, 0): (4, 'forest_land'),            # green
-    (0, 0, 255): (5, 'water'),                  # blue
-    (255, 255, 255): (6, 'barren_land'),        # white
-}
-
-# Индекс класса -> (RGB, имя)
-CLASSES_BY_ID = {
-    id: (rgb, name) for rgb, (id, name) in CLASSES.items()
-}
-
-ENCODER = 'resnet101'
-ENCODER_WEIGHTS = 'imagenet'
-ACTIVATION = None
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-EPOCHS = 30
-BATCH_SIZE = 1
-INIT_LR = 0.00005
-LR_DECREASE_STEP = 15
-LR_DECREASE_COEF = 2
-PATCH_SIZE = 2432
+EPOCHS = 10
+BATCH_SIZE = 16
 
 
-preprocessing = T.Compose([
-    T.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
-    )
-])
+class DiorDataset(Dataset):
 
-
-def get_subimages_generator(
-    image: Image.Image,
-    subimage_size: Tuple[int, int]
-) -> Generator[Image.Image, None, None]:
-  for r in range(image.size[1] // subimage_size[1]):
-    for c in range(image.size[0] // subimage_size[0]):
-      yield image.crop(box=(
-              c * subimage_size[0],
-              r * subimage_size[1],
-              (c + 1) * subimage_size[0],
-              (r + 1) * subimage_size[1]
-          )
-      )
-
-
-def save_dataset_subimages():
-    images_paths = glob(os.path.join(DATASET_DIR, "*_sat.jpg"))
-    masks_paths = glob(os.path.join(DATASET_DIR, "*_mask.png"))
-
-    for i, (image_path, mask_path) in enumerate(zip(images_paths, masks_paths)):
-        image = Image.open(image_path).crop(box=(8, 8, 2448 - 8, 2448 - 8))
-        image_labeled = Image.open(mask_path).crop(box=(8, 8, 2448 - 8, 2448 - 8))
-
-        image.save(fp=f'dataset_{PATCH_SIZE}/originals/image_{i}.jpg')
-        image_labeled.save(fp=f'dataset_{PATCH_SIZE}/labeleds/image_labeled_{i}.png')
-        # subimages = get_subimages_generator(image=image, subimage_size=(PATCH_SIZE, PATCH_SIZE))
-        # subimages_labeleds = get_subimages_generator(image=image_labeled, subimage_size=(PATCH_SIZE, PATCH_SIZE))
-        #
-        # for si, subimage in enumerate(subimages):
-        #     subimage_labeled = next(subimages_labeleds)
-        #
-        #     subimage.save(fp=f'dataset_{PATCH_SIZE}/originals/i{i}si{si}.jpg')
-        #     subimage_labeled.save(fp=f'dataset_{PATCH_SIZE}/labeleds/i{i}si{si}_labeled.png')
-
-
-def get_image_mask_from_labeled(
-    image_labeled: Image.Image,
-    classes: Dict[Tuple[int, int, int], Tuple[int, str]]
-) -> np.ndarray:
-
-    image_mask = np.zeros(shape=(len(classes), image_labeled.size[0], image_labeled.size[1]))
-
-    image_labeled_ndarray = np.array(object=image_labeled)
-    for r in np.arange(stop=image_labeled_ndarray.shape[0]):
-        for c in np.arange(stop=image_labeled_ndarray.shape[1]):
-            class_rgb = tuple(image_labeled_ndarray[r][c])
-            class_value = classes.get(class_rgb)
-            if class_value != None:
-                image_mask[class_value[0]][r][c] = 1.0
-            else:
-                image_mask[0][r][c] = 1.0
-
-    return image_mask
-
-
-def get_image_labeled_from_mask(
-        image_mask: np.ndarray,
-        classes_by_id: Dict[int, Tuple[Tuple[int, int, int], str]]
-) -> Image.Image:
-    image_labeled_ndarray = np.zeros(
-        shape=(image_mask.shape[1], image_mask.shape[2], 3),
-        dtype=np.uint8
-    )
-
-    image_mask_hot = image_mask.argmax(axis=0)
-    for r in np.arange(stop=image_mask_hot.shape[0]):
-        for c in np.arange(stop=image_mask_hot.shape[1]):
-            class_id = image_mask_hot[r][c]
-            class_by_id_value = classes_by_id.get(class_id)
-            image_labeled_ndarray[r][c] = np.array(object=class_by_id_value[0])
-
-    image_labeled = Image.fromarray(obj=image_labeled_ndarray)
-    return image_labeled
-
-
-def transform_pair_images_to_tensor(
-    image: Image.Image,
-    image_labeled: Image.Image,
-    classes: Dict[Tuple[int, int, int], Tuple[int, str]],
-    dtype: torch.FloatType = None,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-
-    image_tensor = T.ToTensor()(pic=image)
-    image_mask_tensor = torch.tensor(
-        data=get_image_mask_from_labeled(
-            image_labeled=image_labeled,
-            classes=classes
-        ),
-        dtype=dtype
-    )
-
-    return image_tensor, image_mask_tensor
-
-
-def reverse_normalize(img, mean, std):
-    img = img * np.array(std) + np.array(mean)
-    return img
-
-
-class DeepGlobeDataset(Dataset):
-    def __init__(
-        self,
-        images_paths: str,
-        masks_paths: str,
-        classes: Dict[Tuple[int, int, int], Tuple[int, str]],
-        preprocessing: Any = None
-    ):
+    def __init__(self, images_paths, labels_paths, width, height, transforms=None):
+        self.transforms = transforms
         self.images_paths = images_paths
-        self.masks_paths = masks_paths
-        self.classes = classes
-        self.preprocessing = preprocessing
+        self.labels_paths = labels_paths
+        self.height = height
+        self.width = width
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        image = Image.open(self.images_paths[idx]).convert('RGB')
-        image_labeled = Image.open(self.masks_paths[idx])
+    def __getitem__(self, idx):
+        image = cv2.imread(self.images_paths[idx])
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).astype(np.float32)
+        image = cv2.resize(image, (self.width, self.height), cv2.INTER_AREA)
+        image /= 255.0
 
-        image_tensor, mask_tensor = transform_pair_images_to_tensor(
-            image=image, image_labeled=image_labeled, classes=self.classes
-        )
+        boxes = []
+        labels = []
 
-        if self.preprocessing:
-            image_tensor = self.preprocessing(image_tensor)
+        # cv2 image gives size as height x width
+        wt = image.shape[1]
+        ht = image.shape[0]
 
-        return image_tensor, mask_tensor
+        with open(self.labels_paths[idx], 'r') as f:
+            for line in f:
+                tokens = line.strip().split()
 
-    def __len__(self) -> int:
+                class_id = int(tokens[0])  # Индекс класса
+                x_center = float(tokens[1])  # Нормализованный центр X
+                y_center = float(tokens[2])  # Нормализованный центр Y
+                width = float(tokens[3])  # Нормализованная ширина
+                height = float(tokens[4])  # Нормализованная высота
+
+                # Преобразование нормализованных координат в абсолютные
+                # Для исходного изображения
+                x_center_abs = x_center * wt
+                y_center_abs = y_center * ht
+                width_abs = width * wt
+                height_abs = height * ht
+
+                # Вычисление [xmin, ymin, xmax, ymax]
+                xmin = x_center_abs - width_abs / 2
+                ymin = y_center_abs - height_abs / 2
+                xmax = x_center_abs + width_abs / 2
+                ymax = y_center_abs + height_abs / 2
+
+                # Масштабирование к новому размеру (self.width, self.height)
+                xmin_corr = (xmin / wt) * self.width
+                ymin_corr = (ymin / ht) * self.height
+                xmax_corr = (xmax / wt) * self.width
+                ymax_corr = (ymax / ht) * self.height
+
+                # Добавление в списки
+                boxes.append([xmin_corr, ymin_corr, xmax_corr, ymax_corr])
+                labels.append(class_id)
+
+        # convert boxes into a torch.Tensor
+        boxes = torch.as_tensor(boxes, dtype=torch.float32)
+
+        # getting the areas of the boxes
+        area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
+
+        # suppose all instances are not crowd
+        # iscrowd = torch.zeros((boxes.shape[0],), dtype=torch.int64)
+
+        labels = torch.as_tensor(labels, dtype=torch.int64)
+
+        target = {}
+        target["boxes"] = boxes
+        target["labels"] = labels
+        target["area"] = area
+        # target["iscrowd"] = iscrowd
+        # image_id
+        image_id = torch.tensor([idx])
+        target["image_id"] = image_id
+
+        if self.transforms:
+            sample = self.transforms(image=image,
+                                     bboxes=target['boxes'],
+                                     labels=labels)
+
+            image = sample['image']
+            target['boxes'] = torch.Tensor(sample['bboxes'])
+
+        return image, target
+
+    def __len__(self):
         return len(self.images_paths)
 
 
-# save_dataset_subimages()
+def get_object_detection_model(num_classes):
+    # load a model pre-trained on COCO
+    model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights="DEFAULT")
 
-images_paths = glob(f'dataset_{PATCH_SIZE}/originals/*')
-masks_paths = glob(f'dataset_{PATCH_SIZE}/labeleds/*')
+    # get number of input features for the classifier
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+    # replace the pre-trained head with a new one
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
 
-train_valid_images, test_images, train_valid_masks, test_masks = train_test_split(
-    images_paths, masks_paths, test_size=0.2
+    return model
+
+
+def apply_nms(orig_prediction, iou_thresh=0.3):
+    # torchvision returns the indices of the bboxes to keep
+    keep = torchvision.ops.nms(orig_prediction['boxes'], orig_prediction['scores'], iou_thresh)
+
+    final_prediction = orig_prediction
+    final_prediction['boxes'] = final_prediction['boxes'][keep]
+    final_prediction['scores'] = final_prediction['scores'][keep]
+    final_prediction['labels'] = final_prediction['labels'][keep]
+
+    return final_prediction
+
+
+# function to convert a torchtensor back to PIL image
+def torch_to_pil(img):
+    return T.ToPILImage()(img).convert('RGB')
+
+
+# Function to visualize bounding boxes in the image
+def plot_img_bbox(img, target, ax, title=None):
+    ax.imshow(img)
+
+    boxes = target['boxes'].cpu().numpy() if isinstance(target['boxes'], torch.Tensor) else target['boxes']
+
+    for box in boxes:
+        x, y, x_max, y_max = box[0], box[1], box[2], box[3]
+        width, height = x_max - x, y_max - y
+        rect = patches.Rectangle(
+            (x, y),
+            width,
+            height,
+            linewidth=2,
+            edgecolor='r',
+            facecolor='none'
+        )
+        ax.add_patch(rect)
+
+    if title:
+        ax.set_title(title, fontsize=12)
+
+    ax.axis('off')
+
+
+def collate_fn(batch):
+    return tuple(zip(*batch))
+
+
+images_paths = sorted(glob(os.path.join(TRAIN_IMAGES_DIR, "*.jpg")))[:500]
+labels_paths = sorted(glob(os.path.join(TRAIN_LABELS_DIR, "*.txt")))[:500]
+
+train_images, test_images, train_labels, test_labels = train_test_split(
+    images_paths, labels_paths, test_size=0.2
 )
 
-train_images, valid_images, train_masks, valid_masks = train_test_split(
-    train_valid_images, train_valid_masks, test_size=0.2
-)
-
-# Вывод размеров выборок
-print(f"Train: {len(train_images)} изображений")
-print(f"Valid: {len(valid_images)} изображений")
-print(f"Test: {len(test_images)} изображений")
-
-# Использование в вашем классе DeepGlobeDataset
-train_dataset = DeepGlobeDataset(
-    images_paths=train_images, masks_paths=train_masks,
-    classes=CLASSES, preprocessing=preprocessing
-)
-valid_dataset = DeepGlobeDataset(
-    images_paths=valid_images, masks_paths=valid_masks,
-    classes=CLASSES, preprocessing=preprocessing
-)
-test_dataset = DeepGlobeDataset(
-    images_paths=test_images, masks_paths=test_masks,
-    classes=CLASSES, preprocessing=preprocessing
-)
+train_dataset = DiorDataset(train_images, train_labels, WIDTH, HEIGHT, transforms=A.Compose([
+    ToTensorV2()
+]))
+test_dataset = DiorDataset(images_paths, labels_paths, WIDTH, HEIGHT, transforms=A.Compose([
+    ToTensorV2()
+]))
 
 train_dataloader = DataLoader(
     dataset=train_dataset,
     batch_size=BATCH_SIZE,
-    shuffle=True
-)
-valid_dataloader = DataLoader(
-    dataset=valid_dataset,
-    batch_size=1,
-    shuffle=False
+    shuffle=True,
+    collate_fn=collate_fn
 )
 test_dataloader = DataLoader(
     dataset=test_dataset,
     batch_size=1,
-    shuffle=False
+    shuffle=False,
+    collate_fn=collate_fn
 )
 
-model = smp.Unet(
-    encoder_name=ENCODER,
-    encoder_weights=ENCODER_WEIGHTS,
-    classes=len(CLASSES),
-    activation=ACTIVATION,
-)
+num_classes = len(CLASSES)
 
-loss = utils.losses.CrossEntropyLoss()
-metrics = [
-    utils.metrics.Fscore(),
-    utils.metrics.IoU()
-]
-optimizer = torch.optim.Adam([
-    dict(params=model.parameters(), lr=INIT_LR),
-])
+# get the model using our helper function
+model = get_object_detection_model(num_classes)
 
-# create epoch runners
-# it is a simple loop of iterating over dataloader`s samples
-train_epoch = utils.train.TrainEpoch(
-    model,
-    loss=loss,
-    metrics=metrics,
-    optimizer=optimizer,
-    device=DEVICE,
-    verbose=True,
-)
+# move model to the right device
+model.to(DEVICE)
 
-valid_epoch = utils.train.ValidEpoch(
-    model,
-    loss=loss,
-    metrics=metrics,
-    device=DEVICE,
-    verbose=True,
-)
+# construct an optimizer
+params = [p for p in model.parameters() if p.requires_grad]
+optimizer = torch.optim.SGD(params, lr=0.005,
+                            momentum=0.9, weight_decay=0.0005)
+# optimizer = torch.optim.Adam(
+#     params, lr=1e-4, weight_decay=0.0005
+# )
 
-max_score = 0
+# and a learning rate scheduler which decreases the learning rate by
+# 10x every 3 epochs
+lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
+                                               step_size=3,
+                                               gamma=0.1)
 
-loss_logs = {"train": [], "val": []}
-metric_logs = {"train": [], "val": []}
-for i in range(0, EPOCHS):
+# Логи для потерь и метрик
+train_loss_log = []
+valid_map_log = []
+best_map = 0
 
-    print('\nEpoch: {}'.format(i))
-    train_logs = train_epoch.run(train_dataloader)
-    train_loss, train_metric, train_metric_IOU = list(train_logs.values())
-    loss_logs["train"].append(train_loss)
-    metric_logs["train"].append(train_metric_IOU)
+# Цикл обучения
+for epoch in range(EPOCHS):
+    model.train()
+    total_loss = 0
+    num_batches = 0
 
-    valid_logs = valid_epoch.run(valid_dataloader)
-    val_loss, val_metric, val_metric_IOU = list(valid_logs.values())
-    loss_logs["val"].append(val_loss)
-    metric_logs["val"].append(val_metric_IOU)
+    # Тренировочный цикл
+    for images, targets in train_dataloader:
+        images = list(image.to(DEVICE) for image in images)
+        targets = [{k: v.to(DEVICE) for k, v in t.items()} for t in targets]
 
-    # do something (save model, change lr, etc.)
-    if max_score < valid_logs['iou_score']:
-        max_score = valid_logs['iou_score']
-        torch.save(model, 'models/deepglobe_unet_v2.pth')
-        print('Model saved!')
+        # Прямой проход и вычисление потерь
+        loss_dict = model(images, targets)
+        losses = sum(loss for loss in loss_dict.values())
 
-    print("LR:", optimizer.param_groups[0]['lr'])
-    if i > 0 and i % LR_DECREASE_STEP == 0:
-        print('Decrease decoder learning rate')
-        optimizer.param_groups[0]['lr'] /= LR_DECREASE_COEF
+        # Обратное распространение
+        optimizer.zero_grad()
+        losses.backward()
+        optimizer.step()
 
+        total_loss += losses.item()
+        num_batches += 1
 
-fig, axes = plt.subplots(1, 2, figsize=(10,4))
-axes[0].plot(loss_logs["train"], label = "train")
-axes[0].plot(loss_logs["val"], label = "val")
-axes[0].set_title("losses - Dice")
+    # Средняя потеря за эпоху
+    avg_train_loss = total_loss / num_batches
+    train_loss_log.append(avg_train_loss)
 
-axes[1].plot(metric_logs["train"], label = "train")
-axes[1].plot(metric_logs["val"], label = "val")
-axes[1].set_title("IOU")
+    # Сохранение модели
+    torch.save(model.state_dict(), 'models/faster_rcnn_dior.pth')
 
-[ax.legend() for ax in axes]
+    # Обновление learning rate
+    lr_scheduler.step()
+
+    print(f"Train Loss: {avg_train_loss:.4f}")
+
+# pick one image from the test set
+img, target = test_dataset[10]
+# put the model in evaluation mode
+model.load_state_dict(torch.load('models/faster_rcnn_dior.pth'))
+model.eval()
+with torch.no_grad():
+    prediction = model([img.to(DEVICE)])[0]
+
+nms_prediction = apply_nms(prediction, iou_thresh=0.01)
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+plot_img_bbox(torch_to_pil(img), target, ax1, title="Expected Output")
+plot_img_bbox(torch_to_pil(img), nms_prediction, ax2, title="Model Output")
 plt.tight_layout()
 plt.show()
-
-
-model = torch.load('models/deepglobe_unet_v2.pth', weights_only=False)
-model = model.to(DEVICE)
-model.eval()
-
-
-with torch.no_grad():
-    # Берем случайный элемент из test_dataset
-    n = np.random.choice(len(test_dataset))
-
-    image, mask = test_dataset[n]
-    image = image.unsqueeze(0).to(DEVICE)  # Добавляем batch dimension
-    mask = mask.numpy()  # Преобразуем маску в numpy для визуализации
-
-    # Получаем предсказание
-    pred = model(image)
-    pred = pred.cpu().numpy()[0]  # Преобразуем в numpy
-
-    fig, ax = plt.subplots(ncols=3)
-    image = image.cpu().numpy()[0].transpose(1, 2, 0)
-    image = reverse_normalize(image, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ax[0].imshow(image)
-    ax[1].imshow(
-        get_image_labeled_from_mask(
-            image_mask=mask,
-            classes_by_id=CLASSES_BY_ID
-        )
-    )
-    ax[2].imshow(
-        get_image_labeled_from_mask(
-            image_mask=pred,
-            classes_by_id=CLASSES_BY_ID
-        )
-    )
-    plt.show()
