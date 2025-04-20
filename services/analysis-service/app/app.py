@@ -8,26 +8,38 @@ from albumentations.pytorch import ToTensorV2
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.ext.asyncio import AsyncSession
+
+import rasterio
+from shapely.geometry import box
+from geoalchemy2.shape import from_shape
 
 from .database import DB_INITIALIZER, get_async_session
+from .schemas import AnalysisIn, Analysis, ObjectTypeUpsert
 from . import config
 from . import crud
-from . import schemas
 
-from pydantic import BaseModel
 
 cfg: config.Config = config.load_config()
 
 app = FastAPI(title='Result Service')
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 CLASSES = [
     "airplane", "airport", "baseballfield", "basketballcourt", "bridge",
     "chimney", "dam", "Expressway-Service-area", "Expressway-toll-station",
     "golffield", "groundtrackfield", "harbor", "overpass", "ship",
     "stadium", "storagetank", "tenniscourt", "trainstation", "vehicle",
-    "windmill", "none"
+    "windmill",
 ]
 
 # Параметры
@@ -70,7 +82,7 @@ def apply_nms(prediction, iou_thresh=0.3):
 
 
 # Функция для инференса
-def detect_objects(image_path, model, iou_thresh=0.3, score_thresh=0.5):
+def detect_objects(image_path, model, iou_thresh=0.3):
     # Подготовка изображения
     image = preprocess_image(image_path)
     image = image.to(DEVICE)
@@ -86,61 +98,54 @@ def detect_objects(image_path, model, iou_thresh=0.3, score_thresh=0.5):
     return T.ToPILImage()(image).convert('RGB'), predictions
 
 
-def plot_img_bbox(img, target, ax, title=None):
-    ax.imshow(img)
+def pixel_to_geo(image_path, box):
+    with rasterio.open(image_path) as src:
+        # Получаем трансформацию (преобразование пикселей в географические координаты)
+        transform = src.transform
+        # Преобразуем [xmin, ymin, xmax, ymax] в географические координаты
+        xmin, ymin = transform * (box[0], box[1])  # Левый верхний угол
+        xmax, ymax = transform * (box[2], box[3])  # Правый нижний угол
+        return [xmin, ymin, xmax, ymax]  # [lon_min, lat_min, lon_max, lat_max]
 
-    boxes = target['boxes'].cpu().numpy() if isinstance(target['boxes'], torch.Tensor) else target['boxes']
 
-    for box in boxes:
-        x, y, x_max, y_max = box[0], box[1], box[2], box[3]
-        width, height = x_max - x, y_max - y
-        rect = patches.Rectangle(
-            (x, y),
-            width,
-            height,
-            linewidth=2,
-            edgecolor='r',
-            facecolor='none'
-        )
-        ax.add_patch(rect)
-
-    if title:
-        ax.set_title(title, fontsize=12)
-
-    ax.axis('off')
+def create_geometry(geo_coords):
+    # geo_coords: [lon_min, lat_min, lon_max, lat_max]
+    geom = box(geo_coords[0], geo_coords[1], geo_coords[2], geo_coords[3])
+    return geom  # Объект POLYGON в WGS84
 
 
 # Инициализация модели
-num_classes = len(CLASSES)
+num_classes = len(CLASSES) + 1
 model = get_object_detection_model(num_classes)
 model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
 model.to(DEVICE)
 
 
-class ImageRequest(BaseModel):
-    images_paths: list[str]
-
-
 @app.post(
     '/analysis',
-    # response_model=list,
+    response_model=list[Analysis],
     summary='Анализирует спутниковые снимки',
     tags=['analysis']
 )
 async def analysis_images(
-        request: ImageRequest,
+    analysis_in: AnalysisIn,
+    db: AsyncSession = Depends(get_async_session)
 ):
     results = []
-    for image_path in request.images_paths:
+    for image_id, image_path in zip(analysis_in.images_ids, analysis_in.images_paths):
         image, prediction = detect_objects(image_path, model)
-        results.append((image, prediction))
 
-    for result in results[:10]:
-        img, pred = result
-        fig, ax = plt.subplots()
-        plot_img_bbox(img, pred, ax, title="Detection")
-        plt.tight_layout()
-        plt.show()
+        boxes = prediction['boxes']
+        scores = prediction['scores']
+        object_types_ids = prediction['labels']
+        for box, score, object_type_id in zip(boxes, scores, object_types_ids):
+            geo_coords = pixel_to_geo(image_path, box)
+            geometry_shape = create_geometry(geo_coords)
+            geometry_db = from_shape(geometry_shape)
+
+            result = await crud.analysis.create_analysis(db, image_id, geometry_db, score, object_type_id)
+            results.append(result)
+    return results
 
 
 @app.on_event("startup")
@@ -155,6 +160,6 @@ async def on_startup():
 
     async for session in get_async_session():
         for object_type in objects_type:
-            await crud.upsert_object_type(
-                session, schemas.object_type.ObjectTypeUpsert(**object_type)
+            await crud.object_type.upsert_object_type(
+                session, ObjectTypeUpsert(**object_type)
             )
