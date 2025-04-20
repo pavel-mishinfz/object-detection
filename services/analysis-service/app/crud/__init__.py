@@ -1,3 +1,3 @@
-from .object_type import upsert_object_type
+from . import analysis, object_type
 
-__all__ = [upsert_object_type]
+__all__ = [analysis, object_type]
