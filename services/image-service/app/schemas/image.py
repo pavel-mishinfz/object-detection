@@ -35,7 +35,17 @@ class PolygonMeta(BaseModel):
     Модель мета-информации о полигоне для запроса снимков
     """
     id: uuid.UUID = Field(title='Идентификатор полигона')
-    geometry_wkb: bytes = Field(title='Координаты вершин полигона в формате WKB')
+    geometry_geojson: dict = Field({
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [54.281558777056105, 44.706032726562505],
+                [54.37306375398213, 45.27457520703124],
+                [54.06401982044115, 45.68656251171873],
+                [54.281558777056105, 44.706032726562505]
+            ]
+        ]
+    }, title='Координаты вершин полигона в формате GeoJSON')
     date_start: date = Field(date.today() - timedelta(days=31), title='Дата начала периода съемки')
     date_end: date = Field(date.today(), title='Дата окончания периода съемки')
     resolution: int = Field(10, title='Разрешение снимка (в метрах)')
