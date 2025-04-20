@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, ForeignKey, Integer, String, UUID
+from sqlalchemy import Column, ForeignKey, Integer, String, UUID, Double
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geometry
 
@@ -12,9 +12,10 @@ class DetectionResult(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     image_id = Column(UUID(as_uuid=True), nullable=False)
     geometry = Column(Geometry(geometry_type='GEOMETRY', srid=4326), nullable=False)
+    score = Column(Double, nullable=False)
     object_type_id = Column(Integer, ForeignKey('object_type.id'), nullable=False)
 
-    object_type = relationship('ObjectType', back_populates='results')
+    object_type = relationship('ObjectType', back_populates='results', lazy='selectin')
 
 
 class ObjectType(Base):
