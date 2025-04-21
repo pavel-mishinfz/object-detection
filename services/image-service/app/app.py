@@ -3,6 +3,7 @@ import os
 from datetime import date
 
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sentinelhub import (
@@ -27,6 +28,14 @@ from . import crud
 cfg: config.Config = config.load_config()
 
 app = FastAPI(title='Image Service')
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Настройка учетных данных
 sh_config = SHConfig()

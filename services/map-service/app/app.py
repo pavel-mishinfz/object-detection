@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import DB_INITIALIZER, get_async_session
@@ -14,6 +15,14 @@ from . import config
 cfg: config.Config = config.load_config()
 
 app = FastAPI(title='Map Service')
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.post(
