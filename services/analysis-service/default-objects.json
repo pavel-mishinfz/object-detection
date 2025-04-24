@@ -1,42 +1,30 @@
 [
     {
         "id": 1,
-        "name": "Самолет"
+        "name": "background"
     },
     {
         "id": 2,
-        "name": "Корабль"
+        "name": "urban_land"
     },
     {
         "id": 3,
-        "name": "Резервуар для хранения"
+        "name": "agriculture_land"
     },
     {
         "id": 4,
-        "name": "Гавань"
+        "name": "rangeland"
     },
     {
         "id": 5,
-        "name": "Мост"
+        "name": "forest_land"
     },
     {
         "id": 6,
-        "name": "Транспортное средство"
+        "name": "water"
     },
     {
         "id": 7,
-        "name": "Дамба"
-    },
-    {
-        "id": 8,
-        "name": "Эстакада"
-    },
-    {
-        "id": 9,
-        "name": "Аэропорт"
-    },
-    {
-        "id": 10,
-        "name": "Ветряная мельница"
+        "name": "barren_land"
     }
 ]
