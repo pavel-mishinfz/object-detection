@@ -120,7 +120,7 @@ async def get_sentinel_image(
         ],
 
         responses=[
-            SentinelHubRequest.output_response("default", MimeType.PNG)
+            SentinelHubRequest.output_response("default", MimeType.TIFF)
         ],
         bbox=bbox,
         size=size,
