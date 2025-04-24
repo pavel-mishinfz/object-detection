@@ -1,25 +1,24 @@
 import json
-from typing import Dict, Tuple
 from PIL import Image
 import torch
-import torchvision
-import segmentation_models_pytorch as smp
 from torchvision import transforms as T
-from albumentations.pytorch import ToTensorV2
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-from matplotlib.colors import ListedColormap
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import DB_INITIALIZER, get_async_session
+from .schemas import AnalysisIn, Analysis, ObjectTypeUpsert
 from . import config
 from . import crud
-from . import schemas
 
-from pydantic import BaseModel
+import rasterio
+from rasterio.features import shapes
+from rasterio.windows import Window
+import geopandas as gpd
+from geoalchemy2.shape import from_shape
+
 
 cfg: config.Config = config.load_config()
 
@@ -78,69 +77,67 @@ def reverse_normalize(img, mean, std):
     return img
 
 
-# Функция для инференса
+def get_segmentation_mask(prediction):
+    pred = torch.argmax(prediction, dim=1).squeeze(0).cpu().numpy()
+    return pred.astype(np.uint8)
+
+
+def mask_to_polygons(mask, image_path, simplify_tolerance=0.5):
+    with rasterio.open(image_path) as src:
+        height, width = src.height, src.width
+
+        height = (height // 32) * 32
+        width = (width // 32) * 32
+
+        window = Window(0, 0, width, height)
+        image = src.read(window=window)
+
+        transform = src.window_transform(window)
+        crs = src.crs
+
+        # Проверка соответствия размеров маски и изображения
+        if mask.shape != (height, width):
+            raise ValueError(f"Размер маски {mask.shape} не соответствует размерам изображения {(height, width)}")
+
+        # Преобразуем маску в полигоны
+        results = (
+            {'properties': {'class_id': v}, 'geometry': s}
+            for s, v in shapes(mask, transform=transform)
+        )
+
+        # Создаём GeoDataFrame для обработки геометрии
+        gdf = gpd.GeoDataFrame.from_features(list(results), crs=crs)
+
+        # # Упрощаем геометрию, если задано
+        # if simplify_tolerance > 0:
+        #     gdf['geometry'] = gdf['geometry'].simplify(simplify_tolerance, preserve_topology=True)
+
+        # Формируем список полигонов
+        polygons = []
+        for _, row in gdf.iterrows():
+            poly = row['geometry']
+            class_id = row['class_id']
+            if poly.is_valid:
+                polygons.append({
+                    'class_id': int(class_id),
+                    'geometry': poly
+                })
+
+    return polygons
+
+
 def segmentation_images(image_path, model):
-    # Подготовка изображения
     image = preprocess_image(image_path)
     image = image.to(DEVICE)
 
-    # Инференс
     model.eval()
     with torch.no_grad():
         pred = model(image)
 
-    return image, pred
+    mask = get_segmentation_mask(pred)
+    polygons = mask_to_polygons(mask, image_path)
 
-
-def get_image_labeled_from_mask(
-        image_mask: np.ndarray,
-        classes_by_id: Dict[int, Tuple[Tuple[int, int, int], str]]
-) -> Image.Image:
-    image_labeled_ndarray = np.zeros(
-        shape=(image_mask.shape[1], image_mask.shape[2], 3),
-        dtype=np.uint8
-    )
-
-    image_mask_hot = image_mask.argmax(axis=0)
-    for r in np.arange(stop=image_mask_hot.shape[0]):
-        for c in np.arange(stop=image_mask_hot.shape[1]):
-            class_id = image_mask_hot[r][c]
-            class_by_id_value = classes_by_id.get(class_id)
-            image_labeled_ndarray[r][c] = np.array(object=class_by_id_value[0])
-
-    image_labeled = Image.fromarray(obj=image_labeled_ndarray)
-    return image_labeled
-
-
-def visualize_segmentation(img, pred):
-    fig, ax = plt.subplots(ncols=2)
-    image = img.cpu().numpy()[0].transpose(1, 2, 0)
-    image = reverse_normalize(image, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ax[0].imshow(image)
-    ax[0].set_title("Original Image")
-
-    ax[1].imshow(
-        get_image_labeled_from_mask(pred.cpu().numpy()[0], CLASSES_BY_ID)
-    )
-    ax[1].set_title("Segmentation Image")
-
-    handles = [
-        patches.Patch(color=np.array(color) / 255.0, label=name[1])
-        for color, name in CLASSES.items()
-    ]
-    plt.legend(
-        handles=handles,
-        loc='center left',
-        bbox_to_anchor=(1.05, 0.5),
-        fontsize=8,
-        ncol=2,
-        frameon=True,
-        edgecolor='black'
-    )
-
-    # Настройка отступов для освобождения места под легенду
-    plt.subplots_adjust(right=0.65, wspace=0.2)
-    plt.show()
+    return polygons
 
 
 # Инициализация модели
@@ -148,30 +145,75 @@ model = torch.load(MODEL_PATH, weights_only=False)
 model.to(DEVICE)
 
 
-class ImageRequest(BaseModel):
-    images_paths: list[str]
+# def visualize_polygons(polygons, image_path):
+#     """
+#     Визуализирует исходный снимок с наложенными полигонами.
+#
+#     Args:
+#         polygons: List[dict], список полигонов с классами и геометрией.
+#         image_path: str, путь к исходному снимку.
+#     """
+#     # Читаем изображение
+#     with rasterio.open(image_path) as src:
+#         crs = src.crs or "EPSG:4326"  # Устанавливаем CRS, если отсутствует
+#         image = src.read([1, 2, 3]).transpose(1, 2, 0)  # Читаем RGB
+#         height, width = image.shape[:2]
+#
+#     # Создаём GeoDataFrame из полигонов, исключая фон (class_id == 0)
+#     gdf = gpd.GeoDataFrame(
+#         [{'geometry': p['geometry'], 'class_id': p['class_id']} for p in polygons if p['class_id'] != 0],
+#         crs=crs
+#     )
+#
+#     # Проверяем, что GeoDataFrame не пуст
+#     if gdf.empty:
+#         print("No valid polygons to display (excluding background).")
+#         return
+#
+#     # Визуализация
+#     fig, ax = plt.subplots(figsize=(12, 12))
+#     # ax.imshow(image)  # Отображаем исходное изображение
+#
+#     # Настраиваем цвета для каждого класса
+#     colors = {
+#         1: 'cyan', 2: 'yellow', 3: 'magenta', 4: 'green', 5: 'blue', 6: 'white'
+#     }
+#
+#     # Отображаем полигоны
+#     for class_id in gdf['class_id'].unique():
+#         class_gdf = gdf[gdf['class_id'] == class_id]
+#         class_gdf.plot(
+#             ax=ax,
+#             color=colors.get(class_id, 'gray'),
+#             # alpha=0.5,
+#             label=f"Class {class_id} ({CLASSES_BY_ID[class_id][1]})"
+#         )
+#
+#     plt.title("Original Image with Polygons")
+#     plt.legend()
+#     plt.show()
 
 
 @app.post(
     '/analysis',
-    # response_model=list,
+    response_model=list[Analysis],
     summary='Анализирует спутниковые снимки',
     tags=['analysis']
 )
 async def analysis_images(
-        request: ImageRequest,
-        # db: AsyncSession = Depends(get_async_session)
+        analysis_in: AnalysisIn,
+        db: AsyncSession = Depends(get_async_session)
 ):
-    # if not os.path.exists(request.image_path):
-    #     raise HTTPException(status_code=404, detail="Image not found")
     results = []
-    for image_path in request.images_paths:
-        image, prediction = segmentation_images(image_path, model)
-        results.append((image, prediction))
+    for image_id, image_path in zip(analysis_in.images_ids, analysis_in.images_paths):
+        polygons = segmentation_images(image_path, model)
 
-    for result in results[:10]:
-        img, pred = result
-        visualize_segmentation(img, pred)
+        # Сохранение в базу данных
+        for poly in polygons:
+            result = await crud.analysis.create_analysis(db, image_id, from_shape(poly['geometry']), poly['class_id'])
+            results.append(result)
+
+    return results
 
 
 @app.on_event("startup")
@@ -186,6 +228,6 @@ async def on_startup():
 
     async for session in get_async_session():
         for object_type in objects_type:
-            await crud.upsert_object_type(
-                session, schemas.object_type.ObjectTypeUpsert(**object_type)
+            await crud.object_type.upsert_object_type(
+                session, ObjectTypeUpsert(**object_type)
             )
