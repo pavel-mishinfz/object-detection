@@ -119,7 +119,7 @@ def mask_to_polygons(mask, image_path, simplify_tolerance=0.5):
             class_id = row['class_id']
             if poly.is_valid:
                 polygons.append({
-                    'class_id': int(class_id),
+                    'class_id': int(class_id) + 1,
                     'geometry': poly
                 })
 
