@@ -1,3 +1,4 @@
+import os
 import json
 import cv2
 import torch
@@ -8,7 +9,7 @@ from albumentations.pytorch import ToTensorV2
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,7 +36,6 @@ app.add_middleware(
 )
 
 # Параметры
-NUM_CLASSES = cfg.num_classes
 WIDTH = cfg.width_image
 HEIGHT = cfg.height_image
 MODEL_PATH = cfg.model_path
@@ -74,47 +74,51 @@ def apply_nms(prediction, iou_thresh=0.3):
     return final_prediction
 
 
-def transform_tensor_to_image(image):
-    return T.ToPILImage()(image)
+def transform_tensor_to_image(tensor):
+    return T.ToPILImage()(tensor)
 
 
 # Функция для инференса
 def detect_objects(image_path, model, iou_thresh=0.3):
     # Подготовка изображения
-    image = preprocess_image(image_path)
-    image = image.unsqueeze(0).to(DEVICE)
+    tensor_image = preprocess_image(image_path)
+    tensor_image_with_batch_dim = tensor_image.unsqueeze(0).to(DEVICE)
 
     # Инференс
     model.eval()
     with torch.no_grad():
-        predictions = model(image)[0]
+        predictions = model(tensor_image_with_batch_dim)[0]
 
     # Применение NMS
     predictions = apply_nms(predictions, iou_thresh)
 
-    return transform_tensor_to_image(image), predictions
+    return transform_tensor_to_image(tensor_image), predictions
 
 
 def pixel_to_geo(image_path, box):
     with rasterio.open(image_path) as src:
-        # Получаем трансформацию (преобразование пикселей в географические координаты)
+        original_height, original_width = src.height, src.width
         transform = src.transform
-        # Преобразуем [xmin, ymin, xmax, ymax] в географические координаты
-        xmin, ymin = transform * (box[0], box[1])  # Левый верхний угол
-        xmax, ymax = transform * (box[2], box[3])  # Правый нижний угол
-        return [xmin, ymin, xmax, ymax]  # [lon_min, lat_min, lon_max, lat_max]
+
+        scale_x = original_width / WIDTH
+        scale_y = original_height / HEIGHT
+
+        xmin, ymin, xmax, ymax = box
+        xmin *= scale_x
+        xmax *= scale_x
+        ymin *= scale_y
+        ymax *= scale_y
+
+        # Получаем координаты углов рамки
+        lon_min, lat_min = rasterio.transform.xy(transform, ymin, xmin, offset='ul')
+        lon_max, lat_max = rasterio.transform.xy(transform, ymax, xmax, offset='lr')
+
+        return [lon_min, lat_min, lon_max, lat_max]
 
 
 def create_geometry(geo_coords):
-    # geo_coords: [lon_min, lat_min, lon_max, lat_max]
     geom = box(geo_coords[0], geo_coords[1], geo_coords[2], geo_coords[3])
-    return geom  # Объект POLYGON в WGS84
-
-
-# Инициализация модели
-model = get_object_detection_model(NUM_CLASSES + 1)
-model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
-model.to(DEVICE)
+    return geom
 
 
 @app.post(
@@ -124,9 +128,12 @@ model.to(DEVICE)
     tags=['analysis']
 )
 async def analysis_images(
+    request: Request,
     analysis_in: AnalysisIn,
     db: AsyncSession = Depends(get_async_session)
 ):
+    model = request.app.state.model
+
     results = []
     for image_id, image_path in zip(analysis_in.images_ids, analysis_in.images_paths):
         image, prediction = detect_objects(image_path, model)
@@ -159,3 +166,14 @@ async def on_startup():
             await crud.object_type.upsert_object_type(
                 session, ObjectTypeUpsert(**object_type)
             )
+
+    # Инициализация модели
+    num_classes = len(objects_type)
+    model = get_object_detection_model(num_classes + 1)
+
+    abs_path_to_model = os.path.abspath(MODEL_PATH)
+    model.load_state_dict(torch.load(abs_path_to_model, map_location=DEVICE))
+    model.to(DEVICE)
+
+    # Cохранение модели в состояние приложения
+    app.state.model = model

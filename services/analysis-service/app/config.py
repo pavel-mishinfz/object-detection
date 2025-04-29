@@ -16,25 +16,19 @@ class Config(BaseSettings):
         alias='DEFAULT_OBJECTS_CONFIG_PATH'
     )
 
-    num_classes = Field(
-        default=20,
-        env='NUM_CLASSES',
-        alias='NUM_CLASSES'
-    )
-
-    width_image = Field(
+    width_image: int = Field(
         default=800,
         env='WIDTH_IMAGE',
         alias='WIDTH_IMAGE'
     )
 
-    height_image = Field(
+    height_image: int = Field(
         default=800,
         env='HEIGHT_IMAGE',
         alias='HEIGHT_IMAGE'
     )
 
-    model_path = Field(
+    model_path: str = Field(
         default='path/to/model',
         env='MODEL_PATH',
         alias='MODEL_PATH'
