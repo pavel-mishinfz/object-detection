@@ -34,19 +34,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-CLASSES = [
-    "airplane", "airport", "baseballfield", "basketballcourt", "bridge",
-    "chimney", "dam", "Expressway-Service-area", "Expressway-toll-station",
-    "golffield", "groundtrackfield", "harbor", "overpass", "ship",
-    "stadium", "storagetank", "tenniscourt", "trainstation", "vehicle",
-    "windmill",
-]
-
 # Параметры
-WIDTH = 800
-HEIGHT = 800
+NUM_CLASSES = cfg.num_classes
+WIDTH = cfg.width_image
+HEIGHT = cfg.height_image
+MODEL_PATH = cfg.model_path
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-MODEL_PATH = 'D:/mishinpa/object-detection/services/analysis-service/app/models/faster_rcnn_dior.pth'
 
 
 # Функция для загрузки модели
@@ -58,12 +51,12 @@ def get_object_detection_model(num_classes):
 
 
 # Функция для предобработки изображения
-def preprocess_image(image_path):
+def preprocess_image(image_path) -> torch.Tensor:
     image = cv2.imread(image_path)
     if image is None:
         raise ValueError(f"Cannot load image at {image_path}")
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).astype("float32")
-    # image = cv2.resize(image, (WIDTH, HEIGHT), cv2.INTER_AREA)
+    image = cv2.resize(image, (WIDTH, HEIGHT), cv2.INTER_AREA)
     image /= 255.0
     transform = ToTensorV2()
     image = transform(image=image)['image']
@@ -81,21 +74,25 @@ def apply_nms(prediction, iou_thresh=0.3):
     return final_prediction
 
 
+def transform_tensor_to_image(image):
+    return T.ToPILImage()(image)
+
+
 # Функция для инференса
 def detect_objects(image_path, model, iou_thresh=0.3):
     # Подготовка изображения
     image = preprocess_image(image_path)
-    image = image.to(DEVICE)
+    image = image.unsqueeze(0).to(DEVICE)
 
     # Инференс
     model.eval()
     with torch.no_grad():
-        predictions = model([image])[0]
+        predictions = model(image)[0]
 
     # Применение NMS
     predictions = apply_nms(predictions, iou_thresh)
 
-    return T.ToPILImage()(image).convert('RGB'), predictions
+    return transform_tensor_to_image(image), predictions
 
 
 def pixel_to_geo(image_path, box):
@@ -115,8 +112,7 @@ def create_geometry(geo_coords):
 
 
 # Инициализация модели
-num_classes = len(CLASSES) + 1
-model = get_object_detection_model(num_classes)
+model = get_object_detection_model(NUM_CLASSES + 1)
 model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
 model.to(DEVICE)
 
