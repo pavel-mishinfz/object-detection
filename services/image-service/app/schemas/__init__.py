@@ -1,3 +1,3 @@
-from .image import PolygonMeta, Image, ImageIn
+from .image import PolygonMeta, ImageIn, Image
 
-__all__ = [PolygonMeta, Image, ImageIn]
+__all__ = [PolygonMeta, ImageIn, Image]

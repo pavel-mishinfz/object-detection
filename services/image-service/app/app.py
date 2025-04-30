@@ -1,6 +1,12 @@
+import io
+import uuid
 import math
-import os
+import base64
+import json
+import cv2
+import PIL
 from datetime import date
+from pathlib import Path
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +25,8 @@ from sentinelhub import (
 )
 from shapely.geometry import shape
 
+import redis
+
 from .database import DB_INITIALIZER, get_async_session
 from .schemas import PolygonMeta, ImageIn, Image
 from . import config
@@ -26,6 +34,12 @@ from . import crud
 
 
 cfg: config.Config = config.load_config()
+
+redis_client = redis.Redis(
+    host=cfg.redis_host,
+    port=cfg.redis_port,
+    db=cfg.redis_db
+)
 
 app = FastAPI(title='Image Service')
 
@@ -45,15 +59,95 @@ sh_config.sh_base_url = "https://services.sentinel-hub.com"
 
 
 @app.post(
-    '/images',
-    response_model=list[Image],
-    summary='Скачивает снимки для указанного полигона из Sentinel Hub',
+    '/images/preview',
+    response_model=list[dict],
+    summary='Предпросмотр снимков из Sentinel Hub для указанного полигона',
     tags=['images']
 )
-async def load_images(
-        polygon_meta: PolygonMeta,
-        db: AsyncSession = Depends(get_async_session)
+async def preview_images(polygon_meta: PolygonMeta):
+    previews = []
+
+    redis_key = f"polygon:{str(polygon_meta.id)}"
+    if redis_client.exists(redis_key):
+        data = redis_client.hgetall(redis_key)
+        cached_hash = data[b'hash'].decode('utf-8')
+
+        if cached_hash == polygon_meta.hash:
+            cached_previews = json.loads(data[b'previews'].decode('utf-8'))
+            return cached_previews
+
+    images = await load_images(polygon_meta)
+
+    for image in images:
+        image_pil = PIL.Image.fromarray(image)
+
+        # --- Создание превью (PNG + base64) ---
+        preview_buffer = io.BytesIO()
+        image_pil.save(preview_buffer, format="PNG")
+        preview_buffer.seek(0)
+        preview_base64 = base64.b64encode(preview_buffer.read()).decode("utf-8")
+
+        # --- Сохраняем оригинал в TIFF ---
+        tiff_buffer = io.BytesIO()
+        image_pil.save(tiff_buffer, format="TIFF")
+        tiff_buffer.seek(0)
+        image_bytes_tiff = tiff_buffer.read()
+
+        image_preview = {
+            "image_id": str(uuid.uuid4()),
+            "preview": f"data:image/png;base64,{preview_base64}",
+            "original": base64.b64encode(image_bytes_tiff).decode("utf-8")
+        }
+        previews.append(image_preview)
+
+    # Кэшируем данные о полигоне
+    data = {
+        'hash': polygon_meta.hash,
+        'previews': json.dumps(previews)
+    }
+    redis_client.hset(f"polygon:{polygon_meta.id}", mapping=data)
+
+    return previews
+
+
+@app.post(
+    '/images/save',
+    response_model=list[Image],
+    summary='Сохранение снимков после предпросмотра',
+    tags=['images']
+)
+async def save_images(
+    polygon_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_session)
 ):
+    saved_images = []
+    data_collection = DataCollection.SENTINEL2_L2A
+    data_folder = Path('C:/') / 'sentinel_downloaded'
+
+    redis_key = f"polygon:{str(polygon_id)}"
+    data = redis_client.hgetall(redis_key)
+    previews = json.loads(data[b'previews'].decode('utf-8'))
+
+    for preview in previews:
+        tiff_data = base64.b64decode(preview['original'])
+        abs_path = data_folder / (preview['image_id'] + '.tiff')
+        with open(abs_path, 'wb') as f:
+            f.write(tiff_data)
+
+        redis_client.delete(redis_key)
+
+        image_in = ImageIn(
+            area_id=polygon_id,
+            source=data_collection.name,
+            url=str(abs_path)
+        )
+
+        created_image = await crud.create_image(db, image_in)  # сохраняем информацию о снимке в БД
+        saved_images.append(created_image)
+    return saved_images
+
+
+async def load_images(polygon_meta: PolygonMeta):
 
     geometry = shape(polygon_meta.geometry_geojson)
     min_x, min_y, max_x, max_y = geometry.bounds
@@ -66,21 +160,14 @@ async def load_images(
     bbox_list = await split_bbox(bbox, size, 1024)
 
     data_collection = DataCollection.SENTINEL2_L2A
-    data_folder = os.path.join(os.path.abspath(""), 'sentinel_downloaded')
+
     images = []
     for bbox in bbox_list:
         date_start, date_end = polygon_meta.date_start, polygon_meta.date_end
         # Запрашиваем снимок их хранилища Sentinel BHub
-        request = await get_sentinel_image(bbox, date_start, date_end, data_collection, resolution, data_folder)
-        request.save_data() # сохраняем снимок локально
-        abs_path = os.path.join(data_folder, request.get_filename_list()[0])
-        image_in = ImageIn(
-            area_id=polygon_meta.id,
-            source=data_collection.name,
-            url=abs_path
-        )
-        created_image = await crud.create_image(db, image_in) # сохраняем информацию о снимке в БД
-        images.append(created_image)
+        request = await get_sentinel_image(bbox, date_start, date_end, data_collection, resolution)
+        data = request.get_data()
+        images.append(data[0])
     return images
 
 
@@ -102,13 +189,11 @@ async def get_sentinel_image(
         date_start: date,
         date_end: date,
         data_collection: DataCollection = DataCollection.SENTINEL2_L2A,
-        resolution: int = 10,
-        data_folder: str = "sentinel_downloaded"
+        resolution: int = 10
 ) -> SentinelHubRequest:
     evalscript = await get_evalscript()
     size = bbox_to_dimensions(bbox, resolution=resolution)
     request = SentinelHubRequest(
-        data_folder=data_folder,
         evalscript=evalscript,
         input_data=[
             SentinelHubRequest.input_data(
