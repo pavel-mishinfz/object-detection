@@ -149,6 +149,19 @@ async def save_images(
     return saved_images
 
 
+@app.get(
+    '/images',
+    response_model=list[Image],
+    summary='Возвращает информацию о снимках из БД для указанного полигона',
+    tags=['images']
+)
+async def get_images(
+    polygon_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_session)
+):
+    return await crud.get_images(db, polygon_id)
+
+
 async def load_images(polygon_meta: PolygonMeta):
 
     geometry = shape(polygon_meta.geometry_geojson)
