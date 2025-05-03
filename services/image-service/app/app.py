@@ -8,7 +8,7 @@ import PIL
 from datetime import date
 from pathlib import Path
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -125,6 +125,8 @@ async def save_images(
     data_folder = Path('C:/') / 'sentinel_downloaded'
 
     redis_key = f"polygon:{str(polygon_id)}"
+    if not redis_client.exists(redis_key):
+        raise HTTPException(status_code=500, detail="Данных для предпросмотра не найдено")
     data = redis_client.hgetall(redis_key)
     previews = json.loads(data[b'previews'].decode('utf-8'))
 
