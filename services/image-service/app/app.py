@@ -122,7 +122,7 @@ async def save_images(
 ):
     saved_images = []
     data_collection = DataCollection.SENTINEL2_L2A
-    data_folder = Path('C:/') / 'sentinel_downloaded'
+    data_folder = Path().resolve() / 'sentinel_downloaded'
 
     redis_key = f"polygon:{str(polygon_id)}"
     if not redis_client.exists(redis_key):
