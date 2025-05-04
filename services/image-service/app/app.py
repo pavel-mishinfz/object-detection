@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -160,6 +161,27 @@ async def get_images(
     db: AsyncSession = Depends(get_async_session)
 ):
     return await crud.get_images(db, polygon_id)
+
+
+@app.get(
+    '/images/{filename}',
+    summary='Преобразует TIFF изображение и возвращает PNG',
+    tags=['images']
+)
+async def get_png_image_from_tiff(filename: str):
+    image_folder = Path().resolve() / 'sentinel_downloaded'
+    file_path = image_folder / filename
+    if not Path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Изображение не найдено")
+
+    # Открываем TIFF и конвертируем в PNG
+    with PIL.Image.open(file_path) as img:
+        img = img.convert("RGB")
+        output = io.BytesIO()
+        img.save(output, format="PNG")
+        output.seek(0)
+
+    return StreamingResponse(output, media_type="image/png")
 
 
 async def load_images(polygon_meta: PolygonMeta):
