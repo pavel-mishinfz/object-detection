@@ -10,6 +10,7 @@ class DetectionResult(Base):
     __tablename__ = 'detection_result'
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    polygon_id = Column(UUID(as_uuid=True), nullable=False)
     image_id = Column(UUID(as_uuid=True), nullable=False)
     geometry = Column(Geometry(geometry_type='GEOMETRY', srid=4326), nullable=False)
     score = Column(Double, nullable=False)
