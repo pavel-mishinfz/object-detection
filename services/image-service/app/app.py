@@ -5,6 +5,7 @@ import base64
 import json
 import cv2
 import PIL
+import numpy as np
 from datetime import date
 from pathlib import Path
 
@@ -25,6 +26,8 @@ from sentinelhub import (
     BBoxSplitter
 )
 from shapely.geometry import shape
+from rasterio.transform import from_bounds
+from rasterio.io import MemoryFile
 
 import redis
 
@@ -79,6 +82,10 @@ async def preview_images(polygon_meta: PolygonMeta):
 
     images = await load_images(polygon_meta)
 
+    # Получаем границы полигона (BBox)
+    polygon_shape = shape(polygon_meta.geometry_geojson)
+    miny, minx, maxy, maxx = polygon_shape.bounds
+
     for image in images:
         image_pil = PIL.Image.fromarray(image)
 
@@ -88,11 +95,26 @@ async def preview_images(polygon_meta: PolygonMeta):
         preview_buffer.seek(0)
         preview_base64 = base64.b64encode(preview_buffer.read()).decode("utf-8")
 
-        # --- Сохраняем оригинал в TIFF ---
-        tiff_buffer = io.BytesIO()
-        image_pil.save(tiff_buffer, format="TIFF")
-        tiff_buffer.seek(0)
-        image_bytes_tiff = tiff_buffer.read()
+        # --- Сохраняем TIFF с геопривязкой ---
+        image_np = np.array(image_pil)
+        image_np = np.moveaxis(image_np, -1, 0)  # (3, H, W)
+
+        transform = from_bounds(minx, miny, maxx, maxy, image_np.shape[2], image_np.shape[1])
+        crs = "EPSG:4326"  # широта/долгота
+
+        with MemoryFile() as memfile:
+            with memfile.open(
+                    driver='GTiff',
+                    height=image_np.shape[1],
+                    width=image_np.shape[2],
+                    count=3,
+                    dtype=image_np.dtype,
+                    crs=crs,
+                    transform=transform
+            ) as dataset:
+                dataset.write(image_np)
+
+            image_bytes_tiff = memfile.read()
 
         image_preview = {
             "image_id": str(uuid.uuid4()),
