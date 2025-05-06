@@ -1,4 +1,5 @@
 import os
+import uuid
 import json
 import cv2
 import torch
@@ -134,6 +135,10 @@ async def analysis_images(
 ):
     model = request.app.state.model
 
+    results = await crud.analysis.get_analysis_results(db, analysis_in.polygon_id)
+    if results.__len__() > 0:
+        return results
+
     results = []
     for image_id, image_path in zip(analysis_in.images_ids, analysis_in.images_paths):
         image, prediction = detect_objects(image_path, model)
@@ -146,9 +151,24 @@ async def analysis_images(
             geometry_shape = create_geometry(geo_coords)
             geometry_db = from_shape(geometry_shape)
 
-            result = await crud.analysis.create_analysis(db, image_id, geometry_db, score, object_type_id)
+            result = await crud.analysis.create_analysis(
+                db, analysis_in.polygon_id, image_id, geometry_db, score, object_type_id
+            )
             results.append(result)
     return results
+
+
+@app.get(
+    '/analysis',
+    response_model=list[Analysis],
+    summary='Возвращает информацию о результе детекции для указанного полигона',
+    tags=['analysis']
+)
+async def get_detection_results(
+    polygon_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_session)
+):
+    return await crud.analysis.get_analysis_results(db, polygon_id)
 
 
 @app.on_event("startup")
