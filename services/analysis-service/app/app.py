@@ -2,6 +2,7 @@ import os
 import uuid
 import json
 import cv2
+import numpy as np
 import torch
 import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
@@ -53,7 +54,10 @@ def get_object_detection_model(num_classes):
 
 # Функция для предобработки изображения
 def preprocess_image(image_path) -> torch.Tensor:
-    image = cv2.imread(image_path)
+    stream = open(image_path, 'rb')
+    bytes = bytearray(stream.read())
+    array = np.asarray(bytes, dtype=np.uint8)
+    image = cv2.imdecode(array, cv2.IMREAD_UNCHANGED)
     if image is None:
         raise ValueError(f"Cannot load image at {image_path}")
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).astype("float32")
