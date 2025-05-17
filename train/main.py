@@ -1,22 +1,22 @@
-import os
 import random
 from glob import glob
-from typing import Tuple, List, Dict, Any, Generator
-
-import cv2
-from PIL import Image
+from pathlib import Path
 import torch
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset
-import torchvision.transforms as T
-
+import torch.nn as nn
+from sklearn.model_selection import train_test_split
 import segmentation_models_pytorch as smp
 from segmentation_models_pytorch import utils
-from sklearn.model_selection import train_test_split
+import albumentations as A
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
+from dataset import DeepGlobeDataset
+from utils import save_dataset_subimages, get_preprocessing, reverse_normalize, get_image_labeled_from_mask, plot_training_curves
+from train import train_model
+
+# Исключение случайности экспериментов
 seed = 42
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
@@ -26,329 +26,149 @@ random.seed(seed)
 torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
+CURRENT_DIR = Path().resolve()
 DATASET_NAME = "DeepGlobe"
 DATASET_DIR = f"D:/mishinpa/datasets/{DATASET_NAME}/train/"
+MODEL_PATH = CURRENT_DIR / "models"
+PATCH_SIZE = 512
 
 CLASSES = {
-    (0, 0, 0): (0, 'background'),               # black
-    (0, 255, 255): (1, 'urban_land'),           # cyan
-    (255, 255, 0): (2, 'agriculture_land'),     # yellow
-    (255, 0, 255): (3, 'rangeland'),            # magenta
-    (0, 255, 0): (4, 'forest_land'),            # green
-    (0, 0, 255): (5, 'water'),                  # blue
-    (255, 255, 255): (6, 'barren_land'),        # white
+    (0, 0, 0): (0, 'background'),
+    (0, 255, 255): (1, 'urban_land'),
+    (255, 255, 0): (2, 'agriculture_land'),
+    (255, 0, 255): (3, 'rangeland'),
+    (0, 255, 0): (4, 'forest_land'),
+    (0, 0, 255): (5, 'water'),
+    (255, 255, 255): (6, 'barren_land'),
 }
-
-# Индекс класса -> (RGB, имя)
-CLASSES_BY_ID = {
-    id: (rgb, name) for rgb, (id, name) in CLASSES.items()
-}
-
-ENCODER = 'resnet34'
-ENCODER_WEIGHTS = 'imagenet'
-ACTIVATION = None
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-EPOCHS = 30
-BATCH_SIZE = 16
-INIT_LR = 0.0005
-LR_DECREASE_STEP = 10
-LR_DECREASE_COEF = 2
-PATCH_SIZE = 1024
+CLASSES_BY_ID = {id: (rgb, name) for rgb, (id, name) in CLASSES.items()}
 
 
-preprocessing = T.Compose([
-    T.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
+class Loss(nn.Module):
+    def __init__(self, weight=None, dice_weight=0.4, ce_weight=0.6):
+        super().__init__()
+        self.dice = smp.losses.DiceLoss(mode="multiclass", from_logits=True)
+        self.ce = nn.CrossEntropyLoss(weight=weight)
+        self.dice_weight = dice_weight
+        self.ce_weight = ce_weight
+        self.__name__ = 'Loss'
+
+    def forward(self, y_pred, y_true):
+        # [B, C, H, W] → [B, H, W]
+        y_true_labels = torch.argmax(y_true, dim=1).long()
+
+        dice_loss = self.dice(y_pred, y_true_labels)
+        ce_loss = self.ce(y_pred, y_true_labels)
+
+        return self.dice_weight * dice_loss + self.ce_weight * ce_loss
+
+
+def main():
+    # save_dataset_subimages(DATASET_DIR, PATCH_SIZE)
+
+    images_paths = glob(str(CURRENT_DIR) + f'/dataset_{PATCH_SIZE}/originals/*')[:400]
+    masks_paths = glob(str(CURRENT_DIR) + f'/dataset_{PATCH_SIZE}/labeleds/*')[:400]
+
+    train_valid_images, test_images, train_valid_masks, test_masks = train_test_split(images_paths, masks_paths,
+                                                                                      test_size=0.2, random_state=seed)
+    train_images, valid_images, train_masks, valid_masks = train_test_split(train_valid_images, train_valid_masks,
+                                                                            test_size=0.2, random_state=seed)
+
+    preprocessing = get_preprocessing()
+
+    augmentation = A.Compose([
+        A.HorizontalFlip(p=0.5),
+        A.VerticalFlip(p=0.5),
+        A.RandomRotate90(p=0.5),
+        A.Affine(translate_percent=0.1, scale=(0.9, 1.1), rotate=(-30, 30), p=0.5)
+    ])
+
+    train_dataset = DeepGlobeDataset(train_images, train_masks, CLASSES, preprocessing, augmentation)
+    valid_dataset = DeepGlobeDataset(valid_images, valid_masks, CLASSES, preprocessing)
+    test_dataset = DeepGlobeDataset(test_images, test_masks, CLASSES, preprocessing)
+
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=4)
+    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=4)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    model = smp.Unet(
+        encoder_name='resnet34',
+        encoder_weights='imagenet',
+        classes=len(CLASSES),
+        activation='softmax2d'
     )
-])
+    model.to(device)
 
+    # class_freqs = [0.8, 0.08, 0.51, 0.06, 0.10, 0.02, 0.15]
+    # class_weights = [1.0 / f for f in class_freqs]
+    # class_weights = torch.FloatTensor(class_weights).to(device)
 
-def get_subimages_generator(
-    image: Image.Image,
-    subimage_size: Tuple[int, int]
-) -> Generator[Image.Image, None, None]:
-  for r in range(image.size[1] // subimage_size[1]):
-    for c in range(image.size[0] // subimage_size[0]):
-      yield image.crop(box=(
-              c * subimage_size[0],
-              r * subimage_size[1],
-              (c + 1) * subimage_size[0],
-              (r + 1) * subimage_size[1]
-          )
-      )
+    alpha = 1
+    loss = Loss(weight=None, dice_weight=alpha, ce_weight=1-alpha) # utils.losses.DiceLoss()
+    metrics = [utils.metrics.Fscore(), utils.metrics.IoU()]
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
 
-
-def save_dataset_subimages():
-    images_paths = sorted(glob(os.path.join(DATASET_DIR, "*_sat.jpg")))[:400]
-    masks_paths = sorted(glob(os.path.join(DATASET_DIR, "*_mask.png")))[:400]
-
-    for i, (image_path, mask_path) in enumerate(zip(images_paths, masks_paths)):
-        image = Image.open(image_path).crop(box=(200, 200, 2448 - 200, 2448 - 200))
-        image_labeled = Image.open(mask_path).crop(box=(200, 200, 2448 - 200, 2448 - 200))
-
-        subimages = get_subimages_generator(image=image, subimage_size=(PATCH_SIZE, PATCH_SIZE))
-        subimages_labeleds = get_subimages_generator(image=image_labeled, subimage_size=(PATCH_SIZE, PATCH_SIZE))
-
-        for si, subimage in enumerate(subimages):
-            subimage_labeled = next(subimages_labeleds)
-
-            subimage.save(fp=f'dataset_{PATCH_SIZE}/originals/i{i}si{si}.jpg')
-            subimage_labeled.save(fp=f'dataset_{PATCH_SIZE}/labeleds/i{i}si{si}_labeled.png')
-
-
-def get_image_mask_from_labeled(
-    image_labeled: Image.Image,
-    classes: Dict[Tuple[int, int, int], Tuple[int, str]]
-) -> np.ndarray:
-
-    image_mask = np.zeros(shape=(len(classes), image_labeled.size[0], image_labeled.size[1]))
-
-    image_labeled_ndarray = np.array(object=image_labeled)
-    for r in np.arange(stop=image_labeled_ndarray.shape[0]):
-        for c in np.arange(stop=image_labeled_ndarray.shape[1]):
-            class_rgb = tuple(image_labeled_ndarray[r][c])
-            class_value = classes.get(class_rgb)
-            if class_value != None:
-                image_mask[class_value[0]][r][c] = 1.0
-            else:
-                image_mask[0][r][c] = 1.0
-
-    return image_mask
-
-
-def get_image_labeled_from_mask(
-        image_mask: np.ndarray,
-        classes_by_id: Dict[int, Tuple[Tuple[int, int, int], str]]
-) -> Image.Image:
-    image_labeled_ndarray = np.zeros(
-        shape=(image_mask.shape[1], image_mask.shape[2], 3),
-        dtype=np.uint8
+    loss_logs, metric_logs = train_model(
+        model, train_loader, valid_loader,
+        loss, metrics, optimizer,
+        device, epochs=30,
+        checkpoint_path=CURRENT_DIR / 'models/deepglobe_unet.pth'
     )
 
-    image_mask_hot = image_mask.argmax(axis=0)
-    for r in np.arange(stop=image_mask_hot.shape[0]):
-        for c in np.arange(stop=image_mask_hot.shape[1]):
-            class_id = image_mask_hot[r][c]
-            class_by_id_value = classes_by_id.get(class_id)
-            image_labeled_ndarray[r][c] = np.array(object=class_by_id_value[0])
+    plot_training_curves(loss_logs, metric_logs)
 
-    image_labeled = Image.fromarray(obj=image_labeled_ndarray)
-    return image_labeled
+    # class_names = [name for _, name in CLASSES.values()]
+    # freqs = count_class_distribution(train_dataset)
+    # plot_class_distribution(freqs, class_names)
 
+    # Визуализация предсказаний
+    model = torch.load(CURRENT_DIR / 'models/deepglobe_unet.pth', weights_only=False)
+    model.eval()
 
-def transform_pair_images_to_tensor(
-    image: Image.Image,
-    image_labeled: Image.Image,
-    classes: Dict[Tuple[int, int, int], Tuple[int, str]],
-    dtype: torch.FloatType = None,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-
-    image_tensor = T.ToTensor()(pic=image)
-    image_mask_tensor = torch.tensor(
-        data=get_image_mask_from_labeled(
-            image_labeled=image_labeled,
-            classes=classes
-        ),
-        dtype=dtype
-    )
-
-    return image_tensor, image_mask_tensor
-
-
-def reverse_normalize(img, mean, std):
-    img = img * np.array(std) + np.array(mean)
-    return img
-
-
-class DeepGlobeDataset(Dataset):
-    def __init__(
-        self,
-        images_paths: str,
-        masks_paths: str,
-        classes: Dict[Tuple[int, int, int], Tuple[int, str]],
-        preprocessing: Any = None
-    ):
-        self.images_paths = images_paths
-        self.masks_paths = masks_paths
-        self.classes = classes
-        self.preprocessing = preprocessing
-
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        image = Image.open(self.images_paths[idx]).convert('RGB')
-        image_labeled = Image.open(self.masks_paths[idx])
-
-        image_tensor, mask_tensor = transform_pair_images_to_tensor(
-            image=image, image_labeled=image_labeled, classes=self.classes
-        )
-
-        if self.preprocessing:
-            image_tensor = self.preprocessing(image_tensor)
-
-        return image_tensor, mask_tensor
-
-    def __len__(self) -> int:
-        return len(self.images_paths)
-
-
-save_dataset_subimages()
-
-images_paths = glob(f'dataset_{PATCH_SIZE}/originals/*')
-masks_paths = glob(f'dataset_{PATCH_SIZE}/labeleds/*')
-
-train_valid_images, test_images, train_valid_masks, test_masks = train_test_split(
-    images_paths, masks_paths, test_size=0.2
-)
-
-train_images, valid_images, train_masks, valid_masks = train_test_split(
-    train_valid_images, train_valid_masks, test_size=0.2
-)
-
-# Вывод размеров выборок
-print(f"Train: {len(train_images)} изображений")
-print(f"Valid: {len(valid_images)} изображений")
-print(f"Test: {len(test_images)} изображений")
-
-# Использование в вашем классе DeepGlobeDataset
-train_dataset = DeepGlobeDataset(
-    images_paths=train_images, masks_paths=train_masks,
-    classes=CLASSES, preprocessing=preprocessing
-)
-valid_dataset = DeepGlobeDataset(
-    images_paths=valid_images, masks_paths=valid_masks,
-    classes=CLASSES, preprocessing=preprocessing
-)
-test_dataset = DeepGlobeDataset(
-    images_paths=test_images, masks_paths=test_masks,
-    classes=CLASSES, preprocessing=preprocessing
-)
-
-train_dataloader = DataLoader(
-    dataset=train_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=True
-)
-valid_dataloader = DataLoader(
-    dataset=valid_dataset,
-    batch_size=1,
-    shuffle=False
-)
-test_dataloader = DataLoader(
-    dataset=test_dataset,
-    batch_size=1,
-    shuffle=False
-)
-
-model = smp.Unet(
-    encoder_name=ENCODER,
-    encoder_weights=ENCODER_WEIGHTS,
-    classes=len(CLASSES),
-    activation=ACTIVATION,
-)
-
-loss = utils.losses.CrossEntropyLoss()
-metrics = [
-    utils.metrics.Fscore(),
-    utils.metrics.IoU()
-]
-optimizer = torch.optim.Adam([
-    dict(params=model.parameters(), lr=INIT_LR),
-])
-
-# create epoch runners
-# it is a simple loop of iterating over dataloader`s samples
-train_epoch = utils.train.TrainEpoch(
-    model,
-    loss=loss,
-    metrics=metrics,
-    optimizer=optimizer,
-    device=DEVICE,
-    verbose=True,
-)
-
-valid_epoch = utils.train.ValidEpoch(
-    model,
-    loss=loss,
-    metrics=metrics,
-    device=DEVICE,
-    verbose=True,
-)
-
-max_score = 0
-
-loss_logs = {"train": [], "val": []}
-metric_logs = {"train": [], "val": []}
-for i in range(0, EPOCHS):
-
-    print('\nEpoch: {}'.format(i))
-    train_logs = train_epoch.run(train_dataloader)
-    train_loss, train_metric, train_metric_IOU = list(train_logs.values())
-    loss_logs["train"].append(train_loss)
-    metric_logs["train"].append(train_metric_IOU)
-
-    valid_logs = valid_epoch.run(valid_dataloader)
-    val_loss, val_metric, val_metric_IOU = list(valid_logs.values())
-    loss_logs["val"].append(val_loss)
-    metric_logs["val"].append(val_metric_IOU)
-
-    # do something (save model, change lr, etc.)
-    if max_score < valid_logs['iou_score']:
-        max_score = valid_logs['iou_score']
-        torch.save(model, 'models/deepglobe_unet_v3.pth')
-        print('Model saved!')
-
-    print("LR:", optimizer.param_groups[0]['lr'])
-    if i > 0 and i % LR_DECREASE_STEP == 0:
-        print('Decrease decoder learning rate')
-        optimizer.param_groups[0]['lr'] /= LR_DECREASE_COEF
-
-
-fig, axes = plt.subplots(1, 2, figsize=(10,4))
-axes[0].plot(loss_logs["train"], label = "train")
-axes[0].plot(loss_logs["val"], label = "val")
-axes[0].set_title("losses - Dice")
-
-axes[1].plot(metric_logs["train"], label = "train")
-axes[1].plot(metric_logs["val"], label = "val")
-axes[1].set_title("IOU")
-
-[ax.legend() for ax in axes]
-plt.tight_layout()
-plt.show()
-
-
-model = torch.load('models/deepglobe_unet_v3.pth', weights_only=False)
-model = model.to(DEVICE)
-model.eval()
-
-
-with torch.no_grad():
-    # Берем случайный элемент из test_dataset
     n = np.random.choice(len(test_dataset))
-
     image, mask = test_dataset[n]
-    image = image.unsqueeze(0).to(DEVICE)  # Добавляем batch dimension
-    mask = mask.numpy()  # Преобразуем маску в numpy для визуализации
+    image = image.unsqueeze(0).to(device)
+    pred = model(image).cpu().detach().numpy()[0]
 
-    # Получаем предсказание
-    pred = model(image)
-    pred = pred.cpu().numpy()[0]  # Преобразуем в numpy
+    image_np = image.cpu().numpy()[0].transpose(1, 2, 0)
+    image_np = reverse_normalize(image_np, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
-    fig, ax = plt.subplots(ncols=3)
-    image = image.cpu().numpy()[0].transpose(1, 2, 0)
-    image = reverse_normalize(image, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ax[0].imshow(image)
-    ax[1].imshow(
-        get_image_labeled_from_mask(
-            image_mask=mask,
-            classes_by_id=CLASSES_BY_ID
-        )
-    )
-    ax[2].imshow(
-        get_image_labeled_from_mask(
-            image_mask=pred,
-            classes_by_id=CLASSES_BY_ID
-        )
-    )
+    fig, ax = plt.subplots(1, 3, figsize=(18, 6))
+
+    # Original image
+    ax[0].imshow(image_np)
+    ax[0].set_title('Original Image', fontsize=14, pad=10)
+    ax[0].axis('off')
+
+    # Ground Truth
+    gt_rgb = get_image_labeled_from_mask(mask.numpy(), CLASSES_BY_ID)
+    ax[1].imshow(gt_rgb)
+    ax[1].set_title('Ground Truth', fontsize=14, pad=10)
+    ax[1].axis('off')
+
+    # Prediction
+    pred_rgb = get_image_labeled_from_mask(pred, CLASSES_BY_ID)
+    ax[2].imshow(pred_rgb)
+    ax[2].set_title('Prediction', fontsize=14, pad=10)
+    ax[2].axis('off')
+
+    # Create legend
+    legend_elements = [Patch(facecolor=np.array(color) / 255,
+                             edgecolor='k',
+                             label=f'{class_id}: {name}')
+                       for color, (class_id, name) in CLASSES.items()]
+
+    plt.legend(handles=legend_elements,
+               bbox_to_anchor=(1.05, 1),
+               loc='upper left',
+               title="Classes",
+               borderaxespad=0.,
+               framealpha=1)
+
+    plt.tight_layout()
     plt.show()
+
+
+if __name__ == '__main__':
+    main()
