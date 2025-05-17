@@ -86,7 +86,7 @@ async def preview_images(polygon_meta: PolygonMeta):
     polygon_shape = shape(polygon_meta.geometry_geojson)
     miny, minx, maxy, maxx = polygon_shape.bounds
 
-    for image in images:
+    for image, bbox in images:
         image_pil = PIL.Image.fromarray(image)
 
         # --- Создание превью (PNG + base64) ---
@@ -99,6 +99,7 @@ async def preview_images(polygon_meta: PolygonMeta):
         image_np = np.array(image_pil)
         image_np = np.moveaxis(image_np, -1, 0)  # (3, H, W)
 
+        minx, miny, maxx, maxy = bbox
         transform = from_bounds(minx, miny, maxx, maxy, image_np.shape[2], image_np.shape[1])
         crs = "EPSG:4326"  # широта/долгота
 
@@ -226,7 +227,7 @@ async def load_images(polygon_meta: PolygonMeta):
         # Запрашиваем снимок их хранилища Sentinel BHub
         request = await get_sentinel_image(bbox, date_start, date_end, data_collection, resolution)
         data = request.get_data()
-        images.append(data[0])
+        images.append((data[0], bbox))
     return images
 
 
