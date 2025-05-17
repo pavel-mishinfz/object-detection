@@ -1,23 +1,30 @@
+import os
+import uuid
+import math
 import json
-from PIL import Image
-import torch
-from torchvision import transforms as T
 import numpy as np
+from PIL import Image
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
+
+import torch
+from torchvision import transforms as T
+
+import rasterio
+from rasterio.features import shapes
+from rasterio.transform import Affine
+from skimage.transform import resize
+import geopandas as gpd
+from geoalchemy2.shape import from_shape
 
 from .database import DB_INITIALIZER, get_async_session
 from .schemas import AnalysisIn, Analysis, ObjectTypeUpsert
 from . import config
 from . import crud
-
-import rasterio
-from rasterio.features import shapes
-from rasterio.windows import Window
-import geopandas as gpd
-from geoalchemy2.shape import from_shape
 
 
 cfg: config.Config = config.load_config()
@@ -48,28 +55,36 @@ CLASSES_BY_ID = {
 }
 
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-MODEL_PATH = 'D:/mishinpa/object-detection/services/analysis-service/app/models/deepglobe_unet_v3.pth'
+MODEL_PATH = cfg.model_path
 
 
-def crop_pil_to_multiple_of_32(image: Image.Image) -> Image.Image:
-    width, height = image.size
-    new_width = (width // 32) * 32
-    new_height = (height // 32) * 32
-    return image.crop((0, 0, new_width, new_height))
+def load_and_resize_geotiff(image_path):
+    with rasterio.open(image_path) as src:
+        image = src.read([1, 2, 3])  # только RGB
+        image = np.transpose(image, (1, 2, 0))  # CHW -> HWC
+        transform = src.transform
+        crs = src.crs
+
+    height, width = image.shape[:2]
+    new_height = math.ceil(height / 32) * 32
+    new_width = math.ceil(width / 32) * 32
+
+    resized_image = resize(image, (new_height, new_width), preserve_range=True).astype(np.uint8)
+    return resized_image, transform, crs, (height, width), (new_height, new_width)
 
 
-# Функция для предобработки изображения
-def preprocess_image(image_path):
-    image = Image.open(image_path).convert("RGB")
-    image = crop_pil_to_multiple_of_32(image)
+def update_transform(old_transform, old_shape, new_shape):
+    scale_y = old_shape[0] / new_shape[0]
+    scale_x = old_shape[1] / new_shape[1]
+    return old_transform * Affine.scale(scale_x, scale_y)
+
+
+def preprocess_image(image_array):
     transform = T.Compose([
         T.ToTensor(),
-        T.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-        )
+        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
-    return transform(image).unsqueeze(0)  # добавляем batch dim
+    return transform(Image.fromarray(image_array))
 
 
 def reverse_normalize(img, mean, std):
@@ -82,116 +97,82 @@ def get_segmentation_mask(prediction):
     return pred.astype(np.uint8)
 
 
-def mask_to_polygons(mask, image_path, simplify_tolerance=0.5):
-    with rasterio.open(image_path) as src:
-        height, width = src.height, src.width
+def mask_to_polygons(mask, transform, crs):
+    results = (
+        {'properties': {'class_id': v}, 'geometry': s}
+        for s, v in shapes(mask.astype(np.uint8), transform=transform)
+    )
+    gdf = gpd.GeoDataFrame.from_features(list(results), crs=crs)
+    polygons = []
 
-        height = (height // 32) * 32
-        width = (width // 32) * 32
-
-        window = Window(0, 0, width, height)
-        image = src.read(window=window)
-
-        transform = src.window_transform(window)
-        crs = src.crs
-
-        # Проверка соответствия размеров маски и изображения
-        if mask.shape != (height, width):
-            raise ValueError(f"Размер маски {mask.shape} не соответствует размерам изображения {(height, width)}")
-
-        # Преобразуем маску в полигоны
-        results = (
-            {'properties': {'class_id': v}, 'geometry': s}
-            for s, v in shapes(mask, transform=transform)
-        )
-
-        # Создаём GeoDataFrame для обработки геометрии
-        gdf = gpd.GeoDataFrame.from_features(list(results), crs=crs)
-
-        # # Упрощаем геометрию, если задано
-        # if simplify_tolerance > 0:
-        #     gdf['geometry'] = gdf['geometry'].simplify(simplify_tolerance, preserve_topology=True)
-
-        # Формируем список полигонов
-        polygons = []
-        for _, row in gdf.iterrows():
-            poly = row['geometry']
-            class_id = row['class_id']
-            if poly.is_valid:
-                polygons.append({
-                    'class_id': int(class_id) + 1,
-                    'geometry': poly
-                })
+    for _, row in gdf.iterrows():
+        poly = row['geometry']
+        class_id = row['class_id']
+        if poly.is_valid:
+            polygons.append({
+                'class_id': int(class_id) + 1,
+                'geometry': poly
+            })
 
     return polygons
 
 
 def segmentation_images(image_path, model):
-    image = preprocess_image(image_path)
-    image = image.to(DEVICE)
+    image_np, transform, crs, old_shape, new_shape = load_and_resize_geotiff(image_path)
+    image_tensor = preprocess_image(image_np).unsqueeze(0).to(DEVICE)
 
     model.eval()
     with torch.no_grad():
-        pred = model(image)
+        pred = model(image_tensor)
 
     mask = get_segmentation_mask(pred)
-    polygons = mask_to_polygons(mask, image_path)
+    new_transform = update_transform(transform, old_shape, new_shape)
+    polygons = mask_to_polygons(mask, new_transform, crs)
 
+    # show_image_and_mask(image_path, mask)
     return polygons
 
 
-# Инициализация модели
-model = torch.load(MODEL_PATH, weights_only=False)
-model.to(DEVICE)
+def show_image_and_mask(image_path, mask):
+    def mask_to_rgb(mask):
+        h, w = mask.shape
+        rgb_mask = np.zeros((h, w, 3), dtype=np.uint8)
+        for class_id, (color, name) in CLASSES_BY_ID.items():
+            rgb_mask[mask == class_id] = color
+        return rgb_mask
 
+    # Загрузка исходного изображения
+    image = Image.open(image_path).convert("RGB")
+    image_np = np.array(image)
 
-# def visualize_polygons(polygons, image_path):
-#     """
-#     Визуализирует исходный снимок с наложенными полигонами.
-#
-#     Args:
-#         polygons: List[dict], список полигонов с классами и геометрией.
-#         image_path: str, путь к исходному снимку.
-#     """
-#     # Читаем изображение
-#     with rasterio.open(image_path) as src:
-#         crs = src.crs or "EPSG:4326"  # Устанавливаем CRS, если отсутствует
-#         image = src.read([1, 2, 3]).transpose(1, 2, 0)  # Читаем RGB
-#         height, width = image.shape[:2]
-#
-#     # Создаём GeoDataFrame из полигонов, исключая фон (class_id == 0)
-#     gdf = gpd.GeoDataFrame(
-#         [{'geometry': p['geometry'], 'class_id': p['class_id']} for p in polygons if p['class_id'] != 0],
-#         crs=crs
-#     )
-#
-#     # Проверяем, что GeoDataFrame не пуст
-#     if gdf.empty:
-#         print("No valid polygons to display (excluding background).")
-#         return
-#
-#     # Визуализация
-#     fig, ax = plt.subplots(figsize=(12, 12))
-#     # ax.imshow(image)  # Отображаем исходное изображение
-#
-#     # Настраиваем цвета для каждого класса
-#     colors = {
-#         1: 'cyan', 2: 'yellow', 3: 'magenta', 4: 'green', 5: 'blue', 6: 'white'
-#     }
-#
-#     # Отображаем полигоны
-#     for class_id in gdf['class_id'].unique():
-#         class_gdf = gdf[gdf['class_id'] == class_id]
-#         class_gdf.plot(
-#             ax=ax,
-#             color=colors.get(class_id, 'gray'),
-#             # alpha=0.5,
-#             label=f"Class {class_id} ({CLASSES_BY_ID[class_id][1]})"
-#         )
-#
-#     plt.title("Original Image with Polygons")
-#     plt.legend()
-#     plt.show()
+    # Настройка фигуры
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+    # Отображение исходного изображения
+    axes[0].imshow(image_np)
+    axes[0].set_title("Исходное изображение")
+    axes[0].axis('off')
+
+    # Отображение маски предсказания
+    axes[1].imshow(mask_to_rgb(mask))
+    axes[1].set_title("Маска сегментации")
+    axes[1].axis('off')
+
+    # Легенда
+    legend_elements = [Patch(facecolor=np.array(color) / 255,
+                             edgecolor='k',
+                             label=f'{class_id}: {name}')
+                       for color, (class_id, name) in CLASSES.items()]
+
+    plt.legend(handles=legend_elements,
+               bbox_to_anchor=(1.05, 1),
+               loc='upper left',
+               title="Classes",
+               borderaxespad=0.,
+               framealpha=1)
+
+    plt.tight_layout()
+    plt.show()
 
 
 @app.post(
@@ -201,19 +182,44 @@ model.to(DEVICE)
     tags=['analysis']
 )
 async def analysis_images(
-        analysis_in: AnalysisIn,
-        db: AsyncSession = Depends(get_async_session)
+    request: Request,
+    analysis_in: AnalysisIn,
+    db: AsyncSession = Depends(get_async_session)
 ):
+    model = request.app.state.model
+
+    results = await crud.analysis.get_analysis_results(db, analysis_in.polygon_id)
+    if results.__len__() > 0:
+        return results
+
     results = []
     for image_id, image_path in zip(analysis_in.images_ids, analysis_in.images_paths):
         polygons = segmentation_images(image_path, model)
 
         # Сохранение в базу данных
         for poly in polygons:
-            result = await crud.analysis.create_analysis(db, image_id, from_shape(poly['geometry']), poly['class_id'])
+            geometry_db = from_shape(poly['geometry'])
+            object_type_id = poly['class_id']
+
+            result = await crud.analysis.create_analysis(
+                db, analysis_in.polygon_id, image_id, geometry_db, object_type_id
+            )
             results.append(result)
 
     return results
+
+
+@app.get(
+    '/analysis',
+    response_model=list[Analysis],
+    summary='Возвращает информацию о результе сегментации для указанного полигона',
+    tags=['analysis']
+)
+async def get_detection_results(
+    polygon_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_session)
+):
+    return await crud.analysis.get_analysis_results(db, polygon_id)
 
 
 @app.on_event("startup")
@@ -231,3 +237,11 @@ async def on_startup():
             await crud.object_type.upsert_object_type(
                 session, ObjectTypeUpsert(**object_type)
             )
+
+    # Инициализация модели
+    abs_path_to_model = os.path.abspath(MODEL_PATH)
+    model = torch.load(abs_path_to_model, weights_only=False, map_location=DEVICE)
+    model.to(DEVICE)
+
+    # Cохранение модели в состояние приложения
+    app.state.model = model
