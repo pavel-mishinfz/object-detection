@@ -7,7 +7,6 @@ import torch
 import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision import transforms as T
-from albumentations.pytorch import ToTensorV2
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
@@ -16,7 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import rasterio
-from shapely.geometry import box
+from rasterio.transform import xy
+from shapely.geometry import Polygon
 from geoalchemy2.shape import from_shape
 
 from .database import DB_INITIALIZER, get_async_session
@@ -46,7 +46,7 @@ DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 
 # Функция для загрузки модели
 def get_object_detection_model(num_classes):
-    model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights=None)
+    model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights='DEFAULT')
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
     return model
@@ -61,69 +61,68 @@ def preprocess_image(image_path) -> torch.Tensor:
     if image is None:
         raise ValueError(f"Cannot load image at {image_path}")
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).astype("float32")
-    image = cv2.resize(image, (WIDTH, HEIGHT), cv2.INTER_AREA)
     image /= 255.0
-    transform = ToTensorV2()
-    image = transform(image=image)['image']
-    return image
+    transform = T.Compose([
+        T.ToTensor()
+    ])
+    image_tensor = transform(image)
+    return image_tensor
 
 
 # Функция для применения NMS
-def apply_nms(prediction, iou_thresh=0.3):
+def apply_nms(prediction, iou_thresh=0.3, score_thresh=0.1):
     keep = torchvision.ops.nms(prediction['boxes'], prediction['scores'], iou_thresh)
+
+    scores = prediction['scores'][keep]
+    mask = scores >= score_thresh
+    final_keep = keep[mask]
+
     final_prediction = {
-        'boxes': prediction['boxes'][keep].cpu().numpy(),
-        'scores': prediction['scores'][keep].cpu().numpy(),
-        'labels': prediction['labels'][keep].cpu().numpy()
+        'boxes': prediction['boxes'][final_keep],
+        'scores': prediction['scores'][final_keep],
+        'labels': prediction['labels'][final_keep]
     }
     return final_prediction
-
-
-def transform_tensor_to_image(tensor):
-    return T.ToPILImage()(tensor)
-
 
 # Функция для инференса
 def detect_objects(image_path, model, iou_thresh=0.3):
     # Подготовка изображения
-    tensor_image = preprocess_image(image_path)
-    tensor_image_with_batch_dim = tensor_image.unsqueeze(0).to(DEVICE)
+    image_tensor = preprocess_image(image_path)
+    image_tensor_with_batch_dim = image_tensor.unsqueeze(0).to(DEVICE)
 
     # Инференс
     model.eval()
     with torch.no_grad():
-        predictions = model(tensor_image_with_batch_dim)[0]
+        prediction = model(image_tensor_with_batch_dim)[0]
 
     # Применение NMS
-    predictions = apply_nms(predictions, iou_thresh)
+    prediction = apply_nms(prediction, iou_thresh)
 
-    return transform_tensor_to_image(tensor_image), predictions
+    return prediction
 
 
 def pixel_to_geo(image_path, box):
     with rasterio.open(image_path) as src:
-        original_height, original_width = src.height, src.width
         transform = src.transform
 
-        scale_x = original_width / WIDTH
-        scale_y = original_height / HEIGHT
+        x_min, y_min, x_max, y_max = box
+        pixel_coords = [
+            (x_min, y_min),  # top-left
+            (x_max, y_min),  # top-right
+            (x_max, y_max),  # bottom-right
+            (x_min, y_max),  # bottom-left
+        ]
 
-        xmin, ymin, xmax, ymax = box
-        xmin *= scale_x
-        xmax *= scale_x
-        ymin *= scale_y
-        ymax *= scale_y
+        geo_coords = []
+        for x, y in pixel_coords:
+            lon, lat = xy(transform, y, x)
+            geo_coords.append((lon, lat))
 
-        # Получаем координаты углов рамки
-        lon_min, lat_min = rasterio.transform.xy(transform, ymin, xmin, offset='ul')
-        lon_max, lat_max = rasterio.transform.xy(transform, ymax, xmax, offset='lr')
-
-        return [lon_min, lat_min, lon_max, lat_max]
+        return geo_coords
 
 
 def create_geometry(geo_coords):
-    geom = box(geo_coords[0], geo_coords[1], geo_coords[2], geo_coords[3])
-    return geom
+    return Polygon(geo_coords)
 
 
 @app.post(
@@ -145,7 +144,7 @@ async def analysis_images(
 
     results = []
     for image_id, image_path in zip(analysis_in.images_ids, analysis_in.images_paths):
-        image, prediction = detect_objects(image_path, model)
+        prediction = detect_objects(image_path, model)
 
         boxes = prediction['boxes']
         scores = prediction['scores']
