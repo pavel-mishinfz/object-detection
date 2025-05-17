@@ -22,6 +22,24 @@ class Config(BaseSettings):
         alias='CLIENT_SECRET'
     )
 
+    redis_host: str = Field(
+        default='localhost',
+        env='REDIS_HOST',
+        alias='REDIS_HOST'
+    )
+
+    redis_port: int = Field(
+        default=6379,
+        env='REDIS_PORT',
+        alias='REDIS_PORT'
+    )
+
+    redis_db: int = Field(
+        default=0,
+        env='REDIS_DB',
+        alias='REDIS_DB'
+    )
+
     model_config = SettingsConfigDict(env_file=".env", extra='allow')
 
     @classmethod
