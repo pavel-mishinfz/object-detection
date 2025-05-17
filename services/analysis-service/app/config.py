@@ -16,6 +16,12 @@ class Config(BaseSettings):
         alias='DEFAULT_OBJECTS_CONFIG_PATH'
     )
 
+    model_path: str = Field(
+        default='path/to/model',
+        env='MODEL_PATH',
+        alias='MODEL_PATH'
+    )
+
     model_config = SettingsConfigDict(env_file=".env", extra='allow')
 
     @classmethod
