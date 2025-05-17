@@ -1,7 +1,9 @@
 import uuid
+import json
+import hashlib
 from typing import Optional, Dict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from datetime import date, datetime, timedelta
 
 
@@ -49,3 +51,26 @@ class PolygonMeta(BaseModel):
     date_start: date = Field(date.today() - timedelta(days=31), title='Дата начала периода съемки')
     date_end: date = Field(date.today(), title='Дата окончания периода съемки')
     resolution: int = Field(10, title='Разрешение снимка (в метрах)')
+    hash: str = Field("", title='Хэш полигона для уникальной идентификации')
+
+    @validator('hash', always=True)
+    def compute_hash(cls, v, values):
+        """
+        Вычисляет хэш на основе координат полигона и дат
+        """
+        # Нормализация координат (сортировка для устранения зависимости от порядка точек)
+        coords = values['geometry_geojson']['coordinates'][0]
+        normalized_coords = sorted(coords)
+
+        # Подготовка данных для хэширования
+        data = {
+            "coordinates": normalized_coords,
+            "date_start": values['date_start'].isoformat(),
+            "date_end": values['date_end'].isoformat(),
+        }
+        data_str = json.dumps(data, sort_keys=True)  # sort_keys для стабильности
+
+        # Вычисление SHA-256 хэша
+        hash_hex = hashlib.sha256(data_str.encode()).hexdigest()
+
+        return hash_hex
