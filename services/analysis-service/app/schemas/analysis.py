@@ -31,6 +31,7 @@ class AnalysisIn(BaseModel):
     """
     Модель для запроса анализа
     """
+    polygon_id: uuid.UUID = Field(title='Идентификатор полигона')
     images_ids: List[uuid.UUID] = Field(title='Идентификаторы снимков')
     images_paths: List[str] = Field(title='Список путей к снимкам')
 
@@ -40,6 +41,7 @@ class Analysis(BaseModel):
     Модель для получения информации об анализе
     """
     id: uuid.UUID = Field(title='Идентификатор результата анализа')
+    polygon_id: uuid.UUID
     image_id: uuid.UUID = Field(title='Идентификатор снимка')
     geometry: GeoJSONPolygon = Field(title='Координаты полигона в формате GeoJSON')
     object_type: ObjectType = Field(title='Тип объекта')

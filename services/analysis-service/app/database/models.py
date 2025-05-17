@@ -10,6 +10,7 @@ class SegmentationResult(Base):
     __tablename__ = 'segmentation_result'
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    polygon_id = Column(UUID(as_uuid=True), nullable=False)
     image_id = Column(UUID(as_uuid=True), nullable=False)
     geometry = Column(Geometry(geometry_type='GEOMETRY', srid=4326), nullable=False)
     object_type_id = Column(Integer, ForeignKey('object_type.id'), nullable=False)
