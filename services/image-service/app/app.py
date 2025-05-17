@@ -216,7 +216,7 @@ async def load_images(polygon_meta: PolygonMeta):
     size = bbox_to_dimensions(bbox, resolution=resolution)
 
     # при необходимости разбиваем полигон на меньшие участки
-    bbox_list = await split_bbox(bbox, size, 1024)
+    bbox_list = await split_bbox(bbox, size, max_size=800)
 
     data_collection = DataCollection.SENTINEL2_L2A
 
