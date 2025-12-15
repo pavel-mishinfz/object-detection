@@ -12,7 +12,6 @@ class UserRead(schemas.BaseUser[uuid.UUID]):
 
 class UserCreate(schemas.BaseUserCreate):
     username: str
-    fingerprint: str
     group_id: int
 
 

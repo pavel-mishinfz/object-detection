@@ -31,7 +31,20 @@ async def get_refresh_token(
     """
 
     result = await session.execute(select(models.RefreshToken) \
-                                   .where(models.RefreshToken.refresh_token.__str__() == refresh_token) \
+                                   .where(models.RefreshToken.refresh_token == refresh_token) \
+                                   .limit(1)
+                                   )
+    return result.scalars().one_or_none()
+
+async def get_refresh_token_by_user_id(
+        session: AsyncSession, user_id: str
+    ) -> models.RefreshToken | None:
+    """
+    Возвращает информацию о refresh токене по id пользователя
+    """
+
+    result = await session.execute(select(models.RefreshToken) \
+                                   .where(models.RefreshToken.user_id == user_id) \
                                    .limit(1)
                                    )
     return result.scalars().one_or_none()
@@ -45,7 +58,7 @@ async def delete_refresh_token(
 
     has_refresh_token = await get_refresh_token(session, refresh_token)
     await session.execute(delete(models.RefreshToken) \
-                          .filter(models.RefreshToken.refresh_token.__str__() == refresh_token)
+                          .filter(models.RefreshToken.refresh_token == refresh_token)
                           )
     await session.commit()
     return bool(has_refresh_token)

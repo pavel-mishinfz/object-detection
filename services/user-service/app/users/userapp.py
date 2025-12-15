@@ -5,23 +5,15 @@ from typing import Any
 from fastapi import Depends, FastAPI
 from fastapi_users import FastAPIUsers
 from fastapi_users.authentication import JWTStrategy
-from fastapi_users.jwt import generate_jwt
 
 from . import secretprovider, usermanager, schemas, refreshcrud
 from .auth_backend import AuthenticationBackend
-from .bearer_transport import BearerTransport, BearerResponse
+from .bearer_transport import BearerTransport
 from .database import database, models
+from .jwt_strategy import CustomJWTStrategy
 
 
 bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
-
-
-class CustomJWTStrategy(JWTStrategy):
-    async def write_token(self, user: Any) -> str:
-        data = {"sub": str(user.id), "aud": self.token_audience, "group_id": user.group_id}
-        return generate_jwt(
-            data, self.encode_key, self.lifetime_seconds, algorithm=self.algorithm
-        )
 
 
 def get_jwt_strategy(
@@ -35,23 +27,21 @@ async def create_refresh_token(user: Any) -> str:
         user_id=user.id
     )
     async for session in database.get_async_session():
+        current_refresh_token: models.RefreshToken | None = await refreshcrud.get_refresh_token_by_user_id(session, user.id)
+        if current_refresh_token:
+            await refreshcrud.delete_refresh_token(session, current_refresh_token.refresh_token.__str__())
+
         refresh_token: models.RefreshToken = await refreshcrud.create_refresh_token(refresh_token_in, session)
-    return str(refresh_token.refresh_token)
+    return refresh_token.refresh_token.__str__()
 
 
 auth_backend = AuthenticationBackend(
     name="jwt",
     transport=bearer_transport,
     get_strategy=get_jwt_strategy,
-    create_refresh_token=create_refresh_token
+    create_refresh_token=create_refresh_token,
+    get_secret_provider=secretprovider.get_secret_provider
 )
-
-async def update_access_and_refresh_tokens(current_user: Any) -> BearerResponse:
-    response: BearerResponse = await auth_backend.login(
-        strategy=auth_backend.get_strategy,
-        user=current_user
-    )
-    return response
 
 fastapi_users = FastAPIUsers[models.User, uuid.UUID](
     usermanager.get_user_manager,

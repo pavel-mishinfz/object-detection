@@ -16,7 +16,7 @@ class RefreshToken(database.Base):
     expires_in = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=func.now())
     user_id = mapped_column(ForeignKey("user.id"), nullable=False)
-    user = relationship("User", uselist=False)
+    user = relationship("User", back_populates="refresh_tokens")
 
 
 class Group(database.Base):
@@ -40,3 +40,4 @@ class User(SQLAlchemyBaseUserTableUUID, database.Base):
     group_id = mapped_column(ForeignKey("group.id"), nullable=False)
     group = relationship("Group", uselist=False)
     devices = relationship("DeviceFingerprint", back_populates="user", cascade="all, delete-orphan")
+    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
