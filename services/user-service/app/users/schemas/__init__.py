@@ -1,3 +1,3 @@
-from . import group, user
+from . import group, user, refresh_token, device
 
-__all__ = [group, user]
+__all__ = [group, user, refresh_token, device]

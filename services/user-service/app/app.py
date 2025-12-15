@@ -1,7 +1,7 @@
 import json
+from datetime import datetime, timedelta
 
-from fastapi import Depends, FastAPI, HTTPException
-
+from fastapi import Depends, FastAPI, HTTPException, Cookie, Body, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import config, users
@@ -12,6 +12,65 @@ from .users.database import database
 app_config: config.Config = config.load_config()
 
 app = FastAPI(title='User Service')
+users.include_routers(app)
+
+
+@app.post(
+    "/auth/jwt/refresh",
+    response_model=users.BearerResponse,
+    summary='Обновляет access и refresh токены',
+    tags=['auth']
+    )
+async def refresh_tokens(
+    response: Response,
+    fingerprint: str = Body(..., embed=True),
+    refresh_token: str = Cookie(),
+    current_user=Depends(users.fastapi_users.current_user(active=True)),
+    session: AsyncSession = Depends(database.get_async_session),
+    ):
+    refresh_token_info = await users.refreshcrud.get_refresh_token(session, refresh_token)
+    await users.refreshcrud.delete_refresh_token(session, refresh_token)
+
+    if datetime.now() > refresh_token_info.expires_in:
+        raise HTTPException(
+            status_code=500,
+            detail='TOKEN_EXPIRED'
+        )
+
+    devices = await users.devicecrud.get_devices(session, current_user.id)
+    fingerprints = [device.fingerprint for device in devices]
+    if fingerprint not in fingerprints:
+        raise HTTPException(
+            status_code=500,
+            detail='INVALID_REFRESH_SESSION'
+        )
+
+    tokens: users.BearerResponse = await users.update_access_and_refresh_tokens(current_user)
+    response.set_cookie(
+        key="refresh_token",
+        value=tokens.refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=30 * 24 * 60 * 60  # 30 дней в секундах
+    )
+
+
+    return tokens
+
+
+@app.post(
+    "/users/device",
+    response_model=schemas.device.Device,
+    summary='Создает запись с fingerprint браузера пользователя',
+    tags=['users']
+    )
+async def add_device(
+    device: schemas.device.DeviceIn,
+    session: AsyncSession = Depends(database.get_async_session)
+    ):
+
+    return await users.devicecrud.create_device(device, session)
 
 
 @app.post(
@@ -77,6 +136,9 @@ async def delete_group(
     if await users.groupcrud.delete_group(session, group_id):
         return group
     return HTTPException(status_code=404, detail="Группа не найдена")
+
+
+
 
 
 @app.on_event("startup")
