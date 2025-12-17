@@ -31,10 +31,10 @@ async def create_refresh_token(user: Any) -> str:
         expires_in=datetime.now() + timedelta(days=30),
         user_id=user.id
     )
-    delete_refresh_token(user)
+    await delete_refresh_token(user)
 
-    session = await anext(database.get_async_session())
-    refresh_token: models.RefreshToken = await refreshcrud.create_refresh_token(refresh_token_in, session)
+    async for session in database.get_async_session():
+        refresh_token: models.RefreshToken = await refreshcrud.create_refresh_token(refresh_token_in, session)
     return refresh_token.refresh_token.__str__()
 
 async def delete_refresh_token(user: Any) -> None:
