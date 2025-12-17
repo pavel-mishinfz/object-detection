@@ -1,14 +1,18 @@
 from typing import Callable
 
-from fastapi import Response
+from fastapi import Response, status
 
 from fastapi_users import models
+from fastapi_users.authentication.strategy import (
+    Strategy,
+    StrategyDestroyNotSupportedError,
+)
+from fastapi_users.authentication.transport import (
+    Transport,
+    TransportLogoutNotSupportedError,
+)
 from fastapi_users.authentication import AuthenticationBackend as BaseAuthenticationBackend
-from fastapi_users.authentication.strategy import Strategy
-from fastapi_users.authentication.transport import Transport
 from fastapi_users.types import DependencyCallable
-
-from .jwt_strategy import CustomJWTStrategy
 
 
 class AuthenticationBackend(BaseAuthenticationBackend):
@@ -17,14 +21,16 @@ class AuthenticationBackend(BaseAuthenticationBackend):
         name: str,
         transport: Transport,
         get_strategy: DependencyCallable[Strategy[models.UP, models.ID]],
+        get_init_strategy: Callable,
         create_refresh_token: Callable,
-        get_secret_provider: Callable
+        delete_refresh_token: Callable,
     ):
         self.name = name
         self.transport = transport
         self.get_strategy = get_strategy
+        self.get_init_strategy = get_init_strategy
         self.create_refresh_token = create_refresh_token
-        self.get_secret_provider = get_secret_provider
+        self.delete_refresh_token = delete_refresh_token
 
     async def login(
         self, 
@@ -36,17 +42,28 @@ class AuthenticationBackend(BaseAuthenticationBackend):
         return await self.transport.get_login_response(
             access_token=access_token, refresh_token=refresh_token
         )
+    
+    async def logout(
+        self, strategy: Strategy[models.UP, models.ID], user: models.UP, token: str
+    ) -> Response:
+        
+        await self.delete_refresh_token(user)
+
+        try:
+            await strategy.destroy_token(token, user)
+        except StrategyDestroyNotSupportedError:
+            pass
+
+        try:
+            response = await self.transport.get_logout_response()
+        except TransportLogoutNotSupportedError:
+            response = Response(status_code=status.HTTP_204_NO_CONTENT)
+
+        return response
 
     async def refresh_tokens(
         self,
         user: models.UP,
     ) -> Response:
-        secret_provider_gen = self.get_secret_provider()
-        secret_provider = None
-        async for provider in secret_provider_gen:
-            secret_provider = provider
-            break
-        
-        jwt_secret = secret_provider.jwt_secret
-        strategy = CustomJWTStrategy(secret=jwt_secret, lifetime_seconds=3600*24*30)
+        strategy = await self.get_init_strategy()
         return await self.login(strategy, user)

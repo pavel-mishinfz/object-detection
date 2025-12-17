@@ -30,7 +30,7 @@ async def refresh_tokens(
     if not refresh_token_info:
         raise HTTPException(
             status_code=400,
-            detail='INVALID_REFRESH_SESSION'
+            detail='NOT_FOUND_REFRESH_SESSION'
         )
     await users.refreshcrud.delete_refresh_token(session, refresh_token)
 
