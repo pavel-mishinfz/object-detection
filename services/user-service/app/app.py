@@ -1,7 +1,8 @@
 import json
 from datetime import datetime
 
-from fastapi import Depends, FastAPI, HTTPException, Cookie, Body, Response
+from fastapi import Depends, FastAPI, HTTPException, Cookie, Body
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import config, users
@@ -12,6 +13,15 @@ from .users.database import database
 app_config: config.Config = config.load_config()
 
 app = FastAPI(title='User Service')
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 users.include_routers(app)
 
 
@@ -22,10 +32,15 @@ users.include_routers(app)
     )
 async def refresh_tokens(
     fingerprint: str = Body(..., embed=True),
-    refresh_token: str = Cookie(),
+    refresh_token: str | None = Cookie(default=None),
     current_user=Depends(users.fastapi_users.current_user(active=True)),
     session: AsyncSession = Depends(database.get_async_session),
     ):
+    if not refresh_token:
+        raise HTTPException(
+            status_code=400,
+            detail='NOT_FOUND_REFRESH_TOKEN'
+        )
     refresh_token_info = await users.refreshcrud.get_refresh_token(session, refresh_token)
     if not refresh_token_info:
         raise HTTPException(
@@ -61,7 +76,10 @@ async def add_device(
     device: schemas.device.DeviceIn,
     session: AsyncSession = Depends(database.get_async_session)
     ):
-
+    devices = await users.devicecrud.get_devices(session, device.user_id)
+    exists_fingerprints = [d.fingerprint for d in devices]
+    if device.fingerprint in exists_fingerprints:
+        return await users.devicecrud.get_device(session, device.fingerprint)
     return await users.devicecrud.create_device(device, session)
 
 

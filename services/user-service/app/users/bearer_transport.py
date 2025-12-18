@@ -22,8 +22,7 @@ class BearerTransport(BaseBearerTransport):
             key="refresh_token",
             value=refresh_token,
             httponly=True,
-            secure=True,
-            samesite="strict",
+            secure=False,
             max_age=30 * 24 * 60 * 60  # 30 дней в секундах
         )
 

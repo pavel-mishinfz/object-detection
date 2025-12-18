@@ -36,3 +36,15 @@ async def get_devices(
                                    .limit(limit)
                                    )
     return result.scalars().all()
+
+async def get_device(
+        session: AsyncSession, fingerprint: str
+    ) -> models.DeviceFingerprint | None:
+    """
+    Возвращает устройство пользователя
+    """
+
+    result = await session.execute(select(models.DeviceFingerprint) \
+                                   .where(models.DeviceFingerprint.fingerprint == fingerprint)
+                                   )
+    return result.scalars().one_or_none()
