@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import models
@@ -41,3 +41,16 @@ async def get_analysis_results(
                               .limit(limit)
                               )
     return result.scalars().all()
+ 
+async def delete_analysis_results(
+    db: AsyncSession, polygon_id: uuid.UUID
+) -> list[models.SegmentationResult]:
+    """
+    Удаляет результаты анализа из БД
+    """
+    results_to_delete = await get_analysis_results(db, polygon_id)
+    await db.execute(delete(models.SegmentationResult) \
+                            .filter(models.SegmentationResult.polygon_id == polygon_id)
+                            )
+    await db.commit()
+    return len(results_to_delete) > 0

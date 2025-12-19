@@ -215,11 +215,23 @@ async def analysis_images(
     summary='Возвращает информацию о результе сегментации для указанного полигона',
     tags=['analysis']
 )
-async def get_detection_results(
+async def get_segmentation_results(
     polygon_id: uuid.UUID,
     db: AsyncSession = Depends(get_async_session)
 ):
     return await crud.analysis.get_analysis_results(db, polygon_id)
+
+ 
+@app.delete(
+    '/analysis',
+    summary='Удаляет информацию о результате сегментации для указанного полигона',
+    tags=['analysis']
+)
+async def delete_segmentation_results(
+    polygon_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_session)
+):
+    return await crud.analysis.delete_analysis_results(db, polygon_id)
 
 
 @app.on_event("startup")

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import models
@@ -33,3 +33,17 @@ async def get_images(
                               .limit(limit)
                               )
     return result.scalars().all()
+
+async def delete_images(
+    session: AsyncSession, area_id: uuid.UUID
+) -> list[models.Image]:
+    """
+    Удаляет снимки из БД
+    """
+    images_to_delete = await get_images(session, area_id)
+    await session.execute(delete(models.Image) \
+                        .filter(models.Image.area_id == area_id)
+                        )
+        
+    await session.commit()
+    return len(images_to_delete) > 0
