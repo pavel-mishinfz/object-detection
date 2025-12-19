@@ -174,6 +174,18 @@ async def get_detection_results(
     return await crud.analysis.get_analysis_results(db, polygon_id)
 
 
+@app.delete(
+    '/analysis',
+    summary='Возвращает информацию о результе детекции для указанного полигона',
+    tags=['analysis']
+)
+async def get_detection_results(
+    polygon_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_session)
+):
+    return await crud.analysis.delete_analysis_results(db, polygon_id)
+
+
 @app.on_event("startup")
 async def on_startup():
     await DB_INITIALIZER.init_database(

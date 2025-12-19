@@ -1,4 +1,5 @@
 import io
+import os
 import uuid
 import math
 import base64
@@ -147,6 +148,7 @@ async def save_images(
     saved_images = []
     data_collection = DataCollection.SENTINEL2_L2A
     data_folder = Path().resolve() / 'sentinel_downloaded'
+    os.makedirs('sentinel_downloaded', exist_ok=True)
 
     redis_key = f"polygon:{str(polygon_id)}"
     if not redis_client.exists(redis_key):
@@ -171,6 +173,24 @@ async def save_images(
         created_image = await crud.create_image(db, image_in)  # сохраняем информацию о снимке в БД
         saved_images.append(created_image)
     return saved_images
+
+
+@app.delete(
+    '/images',
+    summary='Удаляет снимки для конкретного полигона',
+    tags=['images']
+)
+async def delete_images(
+    polygon_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_session)
+):
+    images = await crud.get_images(db, polygon_id)
+    for img in images:
+        try:
+            os.remove(img.url)
+        except:
+            continue
+    return await crud.delete_images(db, polygon_id)
 
 
 @app.get(
