@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 
 from fastapi import Depends, FastAPI, HTTPException, Cookie, Body, Response
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import config, users
@@ -12,6 +13,15 @@ from .users.database import database
 app_config: config.Config = config.load_config()
 
 app = FastAPI(title='User Service')
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 users.include_routers(app)
 
 
