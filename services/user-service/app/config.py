@@ -34,6 +34,30 @@ class Config(BaseSettings):
         alias='DEFAULT_GROUPS_CONFIG_PATH'
     )
 
+    own_email: str = Field(
+        default='user@example.com',
+        env='OWN_EMAIL',
+        alias='OWN_EMAIL'
+    )
+
+    own_email_password: str = Field(
+        default='password',
+        env='OWN_EMAIL_PASSWORD',
+        alias='OWN_EMAIL_PASSWORD'
+    )
+
+    smtp_server: str = Field(
+        default='smtp.mail.ru',
+        env='SMTP_SERVER',
+        alias='SMTP_SERVER'
+    )
+
+    smtp_port: int = Field(
+        default='465',
+        env='smtp_port',
+        alias='smtp_port'
+    )
+
     model_config = SettingsConfigDict(env_file=".env", extra='allow')
 
     @classmethod

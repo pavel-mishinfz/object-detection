@@ -1,27 +1,19 @@
+from datetime import datetime, timedelta
 import uuid
+from typing import Any
 
 from fastapi import Depends, FastAPI
 from fastapi_users import FastAPIUsers
-from fastapi_users.authentication import (AuthenticationBackend,
-                                          BearerTransport,
-                                          JWTStrategy)
+from fastapi_users.authentication import JWTStrategy
 
-from . import secretprovider, usermanager
-from .database import models
-from . import schemas
-from typing import Any
-from fastapi_users.jwt import generate_jwt
+from . import secretprovider, usermanager, schemas, refreshcrud
+from .auth_backend import AuthenticationBackend
+from .bearer_transport import BearerTransport
+from .database import database, models
+from .jwt_strategy import CustomJWTStrategy
 
 
 bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
-
-
-class CustomJWTStrategy(JWTStrategy):
-    async def write_token(self, user: Any) -> str:
-        data = {"sub": str(user.id), "aud": self.token_audience, "group_id": user.group_id}
-        return generate_jwt(
-            data, self.encode_key, self.lifetime_seconds, algorithm=self.algorithm
-        )
 
 
 def get_jwt_strategy(
@@ -29,11 +21,36 @@ def get_jwt_strategy(
     ) -> JWTStrategy:
     return CustomJWTStrategy(secret=secret_provider.jwt_secret, lifetime_seconds=3600)
 
+async def get_jwt_init_strategy() -> JWTStrategy:
+    secret_provider_gen = secretprovider.get_secret_provider()
+    secret_provider = await anext(secret_provider_gen)
+    return CustomJWTStrategy(secret=secret_provider.jwt_secret, lifetime_seconds=3600)
+
+async def create_refresh_token(user: Any) -> str:
+    refresh_token_in = schemas.refresh_token.RefreshTokenIn(
+        expires_in=datetime.now() + timedelta(days=30),
+        user_id=user.id
+    )
+    await delete_refresh_token(user)
+
+    async for session in database.get_async_session():
+        refresh_token: models.RefreshToken = await refreshcrud.create_refresh_token(refresh_token_in, session)
+    return refresh_token.refresh_token.__str__()
+
+async def delete_refresh_token(user: Any) -> None:
+    async for session in database.get_async_session():
+        current_refresh_token: models.RefreshToken | None = await refreshcrud.get_refresh_token_by_user_id(session, user.id)
+        if current_refresh_token:
+            await refreshcrud.delete_refresh_token(session, current_refresh_token.refresh_token.__str__())
+
 
 auth_backend = AuthenticationBackend(
     name="jwt",
     transport=bearer_transport,
     get_strategy=get_jwt_strategy,
+    get_init_strategy=get_jwt_init_strategy,
+    create_refresh_token=create_refresh_token,
+    delete_refresh_token=delete_refresh_token
 )
 
 fastapi_users = FastAPIUsers[models.User, uuid.UUID](
