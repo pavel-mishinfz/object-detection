@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 
-from fastapi import Depends, FastAPI, HTTPException, Cookie, Body
+from fastapi import Depends, FastAPI, HTTPException, Cookie, Body, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +16,7 @@ app = FastAPI(title='User Service')
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,7 +32,7 @@ users.include_routers(app)
     )
 async def refresh_tokens(
     fingerprint: str = Body(..., embed=True),
-    refresh_token: str | None = Cookie(default=None),
+    refresh_token: str = Cookie(),
     current_user=Depends(users.fastapi_users.current_user(active=True)),
     session: AsyncSession = Depends(database.get_async_session),
     ):
