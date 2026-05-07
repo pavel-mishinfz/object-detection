@@ -1,0 +1,21 @@
+from typing import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from app.config import load_config
+from app.map.infrastructure.models import Base as MapBase
+
+
+cfg = load_config()
+_engine = create_async_engine(cfg.postgres_dsn_async.unicode_string(), echo=False)
+_session_factory = async_sessionmaker(_engine, expire_on_commit=False)
+
+
+async def get_session() -> AsyncGenerator[AsyncSession]:
+    async with _session_factory() as session:
+        yield session
+
+
+async def init_db() -> None:
+    async with _engine.begin() as conn:
+        await conn.run_sync(MapBase.metadata.create_all)
