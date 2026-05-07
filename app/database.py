@@ -3,6 +3,7 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import load_config
+from app.image.infrastructure.models import Base as ImageBase
 from app.map.infrastructure.models import Base as MapBase
 
 
@@ -19,3 +20,4 @@ async def get_session() -> AsyncGenerator[AsyncSession]:
 async def init_db() -> None:
     async with _engine.begin() as conn:
         await conn.run_sync(MapBase.metadata.create_all)
+        await conn.run_sync(ImageBase.metadata.create_all)
