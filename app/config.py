@@ -17,6 +17,17 @@ class Config(BaseSettings):
     sentinel_temp_dir: str = Field(default='sentinel_temp')
     sentinel_images_dir: str = Field(default='sentinel_images')
 
+    jwt_secret: SecretStr = Field(default='jwt_secret')
+    reset_password_token_secret: SecretStr = Field(default='reset_password_token_secret')
+    verification_token_secret: SecretStr = Field(default='verification_token_secret')
+
+    sender_email: str = Field(default='noreply@example.com')
+    sender_password: SecretStr = Field(default='password')
+    smtp_server: str = Field(default='smtp.example.com')
+    smtp_port: int = Field(default=465)
+
+    default_groups_config_path: str = Field(default='default-groups.json')
+
     model_config = SettingsConfigDict(env_file="app/.env")
 
 

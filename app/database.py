@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.config import load_config
 from app.image.infrastructure.models import Base as ImageBase
 from app.map.infrastructure.models import Base as MapBase
+from app.user.infrastructure.models import Base as UserBase
 
 
 cfg = load_config()
@@ -21,3 +22,4 @@ async def init_db() -> None:
     async with _engine.begin() as conn:
         await conn.run_sync(MapBase.metadata.create_all)
         await conn.run_sync(ImageBase.metadata.create_all)
+        await conn.run_sync(UserBase.metadata.create_all)
