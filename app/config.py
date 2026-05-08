@@ -27,6 +27,8 @@ class Config(BaseSettings):
     smtp_port: int = Field(default=465)
 
     default_groups_config_path: str = Field(default='default-groups.json')
+    default_objects_config_path: str = Field(default='default-objects.json')
+    model_path: str = Field(default='best.pt')
 
     model_config = SettingsConfigDict(env_file="app/.env")
 
