@@ -12,11 +12,3 @@ class NoPreviewAvailableError(ImageDomainError):
 
 class ImageNotFoundError(ImageDomainError):
     pass
-
-
-class AreaNotFoundError(ImageDomainError):
-    pass
-
-
-class AreaAccessDeniedError(ImageDomainError):
-    pass

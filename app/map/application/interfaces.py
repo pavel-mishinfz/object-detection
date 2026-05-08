@@ -1,8 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Protocol
 from uuid import UUID
 
 from app.map.domain.polygon import Polygon
+
+
+class IImageFilesCleaner(Protocol):
+    async def delete_files_by_area(self, area_id: UUID) -> None: ...
 
 
 class IPolygonRepository(ABC):

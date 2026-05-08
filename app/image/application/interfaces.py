@@ -1,8 +1,17 @@
 from abc import ABC, abstractmethod
 from datetime import date
+from typing import Protocol
 from uuid import UUID
 
 from app.image.domain.image import Image, PreviewTile, TileResult
+
+
+class IAreaAccessPolicy(Protocol):
+    async def check_ownership(self, area_id: UUID, user_id: UUID) -> None: ...
+
+
+class IAreaReader(Protocol):
+    async def get_geometry(self, area_id: UUID) -> tuple[tuple[float, float], ...]: ...
 
 
 class IImageRepository(ABC):
@@ -76,16 +85,4 @@ class IImageCache(ABC):
 
     @abstractmethod
     async def invalidate(self, area_id: UUID) -> None:
-        pass
-
-
-class IAreaReader(ABC):
-    @abstractmethod
-    async def check_ownership(self, area_id: UUID, user_id: UUID) -> None:
-        pass
-
-    @abstractmethod
-    async def get_geometry(
-        self, area_id: UUID, user_id: UUID
-    ) -> tuple[tuple[float, float], ...]:
         pass

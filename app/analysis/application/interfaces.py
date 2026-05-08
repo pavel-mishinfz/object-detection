@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Protocol
 from uuid import UUID
 
 from app.analysis.domain.detection_result import DetectionResult, ObjectType
@@ -16,6 +17,14 @@ class RawDetection:
 class ImageInfo:
     id: UUID
     path: str
+
+
+class IAreaAccessPolicy(Protocol):
+    async def check_ownership(self, area_id: UUID, user_id: UUID) -> None: ...
+
+
+class IImageReader(Protocol):
+    async def get_images_for_area(self, area_id: UUID) -> list[ImageInfo]: ...
 
 
 class IDetectionResultRepository(ABC):
@@ -35,18 +44,6 @@ class IDetectionResultRepository(ABC):
 class IDetectionEngine(ABC):
     @abstractmethod
     def detect(self, image_path: str) -> list[RawDetection]:
-        pass
-
-
-class IImageReader(ABC):
-    @abstractmethod
-    async def get_images_for_area(self, area_id: UUID) -> list[ImageInfo]:
-        pass
-
-
-class IAreaReader(ABC):
-    @abstractmethod
-    async def check_ownership(self, area_id: UUID, user_id: UUID) -> None:
         pass
 
 

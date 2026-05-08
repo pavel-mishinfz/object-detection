@@ -5,7 +5,7 @@ from uuid import UUID
 from app.analysis.domain.detection_result import DetectionResult, ObjectType
 from app.analysis.domain.errors import NoImagesError
 from app.analysis.application.interfaces import (
-    IAreaReader,
+    IAreaAccessPolicy,
     IDetectionEngine,
     IDetectionResultRepository,
     IImageReader,
@@ -40,13 +40,13 @@ def build_detection_result(
 async def run_analysis(
     area_id: UUID,
     user_id: UUID,
-    area_reader: IAreaReader,
+    area_access_policy: IAreaAccessPolicy,
     image_reader: IImageReader,
     engine: IDetectionEngine,
     repo: IDetectionResultRepository,
     object_type_repo: IObjectTypeRepository,
 ) -> None:
-    await area_reader.check_ownership(area_id, user_id)
+    await area_access_policy.check_ownership(area_id, user_id)
 
     existing = await repo.find_by_area(area_id)
     if existing:
@@ -78,10 +78,10 @@ async def run_analysis(
 async def delete_results(
     area_id: UUID,
     user_id: UUID,
-    area_reader: IAreaReader,
+    area_access_policy: IAreaAccessPolicy,
     repo: IDetectionResultRepository,
 ) -> None:
-    await area_reader.check_ownership(area_id, user_id)
+    await area_access_policy.check_ownership(area_id, user_id)
     await repo.delete_by_area(area_id)
 
 
@@ -90,8 +90,8 @@ async def delete_results(
 async def get_results(
     area_id: UUID,
     user_id: UUID,
-    area_reader: IAreaReader,
+    area_access_policy: IAreaAccessPolicy,
     repo: IDetectionResultRepository,
 ) -> list[DetectionResult]:
-    await area_reader.check_ownership(area_id, user_id)
+    await area_access_policy.check_ownership(area_id, user_id)
     return await repo.find_by_area(area_id)

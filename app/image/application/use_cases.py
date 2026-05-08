@@ -10,6 +10,7 @@ from app.image.domain.errors import (
 )
 from app.image.domain.image import Image, ImageBounds, PreviewTile
 from app.image.application.interfaces import (
+    IAreaAccessPolicy,
     IAreaReader,
     IImageCache,
     IImageRepository,
@@ -69,13 +70,15 @@ async def fetch_previews(
     user_id: UUID,
     date_start: date,
     date_end: date,
+    area_access_policy: IAreaAccessPolicy,
     area_reader: IAreaReader,
     gateway: ISentinelGateway,
     cache: IImageCache,
     storage: IImageStorage,
 ) -> None:
     validate_date_range(date_start, date_end)
-    coordinates = await area_reader.get_geometry(area_id, user_id)
+    await area_access_policy.check_ownership(area_id, user_id)
+    coordinates = await area_reader.get_geometry(area_id)
     request_hash = compute_request_hash(coordinates, date_start, date_end)
 
     cached = await cache.get(area_id)
@@ -97,12 +100,12 @@ async def fetch_previews(
 async def save_images(
     area_id: UUID,
     user_id: UUID,
-    area_reader: IAreaReader,
+    area_access_policy: IAreaAccessPolicy,
     repo: IImageRepository,
     storage: IImageStorage,
     cache: IImageCache,
 ) -> None:
-    await area_reader.check_ownership(area_id, user_id)
+    await area_access_policy.check_ownership(area_id, user_id)
 
     cached = await cache.get(area_id)
     if cached is None:
@@ -130,11 +133,11 @@ async def save_images(
 async def delete_images(
     area_id: UUID,
     user_id: UUID,
-    area_reader: IAreaReader,
+    area_access_policy: IAreaAccessPolicy,
     repo: IImageRepository,
     storage: IImageStorage,
 ) -> None:
-    await area_reader.check_ownership(area_id, user_id)
+    await area_access_policy.check_ownership(area_id, user_id)
     images = await repo.find_by_area(area_id)
     for image in images:
         await storage.delete(image.path)
@@ -146,10 +149,10 @@ async def delete_images(
 async def get_preview_tiles(
     area_id: UUID,
     user_id: UUID,
-    area_reader: IAreaReader,
+    area_access_policy: IAreaAccessPolicy,
     cache: IImageCache,
 ) -> list[PreviewTile]:
-    await area_reader.check_ownership(area_id, user_id)
+    await area_access_policy.check_ownership(area_id, user_id)
     cached = await cache.get(area_id)
     if cached is None:
         return []
@@ -160,10 +163,10 @@ async def get_preview_tiles(
 async def get_images(
     area_id: UUID,
     user_id: UUID,
-    area_reader: IAreaReader,
+    area_access_policy: IAreaAccessPolicy,
     repo: IImageRepository,
 ) -> list[Image]:
-    await area_reader.check_ownership(area_id, user_id)
+    await area_access_policy.check_ownership(area_id, user_id)
     return await repo.find_by_area(area_id)
 
 
@@ -171,12 +174,12 @@ async def get_image_as_png(
     image_id: UUID,
     user_id: UUID,
     repo: IImageRepository,
-    area_reader: IAreaReader,
+    area_access_policy: IAreaAccessPolicy,
     storage: IImageStorage,
 ) -> bytes:
     image = await repo.find_by_id(image_id)
     if image is not None:
-        await area_reader.check_ownership(image.area_id, user_id)
+        await area_access_policy.check_ownership(image.area_id, user_id)
         return await storage.load_as_png_bytes(image.path)
 
     temp_path = storage.get_temp_path(image_id)

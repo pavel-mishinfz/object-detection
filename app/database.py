@@ -1,5 +1,6 @@
 from typing import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.analysis.infrastructure.models import Base as AnalysisBase
@@ -25,3 +26,15 @@ async def init_db() -> None:
         await conn.run_sync(ImageBase.metadata.create_all)
         await conn.run_sync(UserBase.metadata.create_all)
         await conn.run_sync(AnalysisBase.metadata.create_all)
+        await conn.execute(text(
+            "ALTER TABLE image ADD CONSTRAINT IF NOT EXISTS fk_image_area "
+            "FOREIGN KEY (area_id) REFERENCES area(id) ON DELETE CASCADE"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE detection_result ADD CONSTRAINT IF NOT EXISTS fk_dr_area "
+            "FOREIGN KEY (area_id) REFERENCES area(id) ON DELETE CASCADE"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE detection_result ADD CONSTRAINT IF NOT EXISTS fk_dr_image "
+            "FOREIGN KEY (image_id) REFERENCES image(id) ON DELETE CASCADE"
+        ))
