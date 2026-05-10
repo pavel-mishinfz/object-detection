@@ -1,12 +1,8 @@
-import uuid
-
 from fastapi_users.db import SQLAlchemyBaseUserTableUUID
-from sqlalchemy import Column, ForeignKey, Integer, String, UUID
-from sqlalchemy.orm import DeclarativeBase, mapped_column, relationship
+from sqlalchemy import Column, ForeignKey, Integer, String
+from sqlalchemy.orm import mapped_column, relationship
 
-
-class Base(DeclarativeBase):
-    pass
+from app.shared.db import Base
 
 
 class Group(Base):

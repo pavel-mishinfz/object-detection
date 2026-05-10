@@ -13,7 +13,7 @@ class PolygonRepository(IPolygonRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def save(self, polygon: Polygon) -> Polygon:
+    async def save(self, polygon: Polygon) -> None:
         record = Area(
             id=polygon.id,
             user_id=polygon.user_id,
@@ -23,7 +23,6 @@ class PolygonRepository(IPolygonRepository):
         )
         self._session.add(record)
         await self._session.flush()
-        return polygon
 
     async def find_by_id(self, polygon_id: UUID) -> Polygon | None:
         result = await self._session.execute(
@@ -40,7 +39,7 @@ class PolygonRepository(IPolygonRepository):
         )
         return [to_domain(r) for r in result.scalars().all()]
 
-    async def update(self, polygon: Polygon) -> Polygon:
+    async def update(self, polygon: Polygon) -> None:
         await self._session.execute(
             update(Area)
             .where(Area.id == polygon.id)
@@ -50,7 +49,6 @@ class PolygonRepository(IPolygonRepository):
             )
         )
         await self._session.flush()
-        return polygon
 
     async def delete(self, polygon_id: UUID) -> None:
         await self._session.execute(

@@ -5,10 +5,9 @@ from uuid import UUID
 
 from app.image.domain.errors import (
     ImageNotFoundError,
-    InvalidDateRangeError,
     NoPreviewAvailableError,
 )
-from app.image.domain.image import Image, ImageBounds, PreviewTile
+from app.image.domain.image import Image, ImageBounds
 from app.image.application.interfaces import (
     IAreaAccessPolicy,
     IAreaReader,
@@ -16,7 +15,9 @@ from app.image.application.interfaces import (
     IImageRepository,
     IImageStorage,
     ISentinelGateway,
+    PreviewTile,
 )
+from app.image.domain.validators import validate_date_range
 
 
 # --- Чистые функции (нет IO) ---
@@ -34,16 +35,6 @@ def compute_request_hash(
     return hashlib.sha256(
         json.dumps(data, sort_keys=True).encode()
     ).hexdigest()
-
-
-def validate_date_range(date_start: date, date_end: date) -> None:
-    today = date.today()
-    if date_start > today or date_end > today:
-        raise InvalidDateRangeError("Дата не может быть в будущем")
-    if date_start > date_end:
-        raise InvalidDateRangeError(
-            "Дата начала должна быть раньше или равна дате окончания"
-        )
 
 
 def build_image(
@@ -76,7 +67,7 @@ async def fetch_previews(
     cache: IImageCache,
     storage: IImageStorage,
 ) -> None:
-    validate_date_range(date_start, date_end)
+    validate_date_range(date_start, date_end, date.today())
     await area_access_policy.check_ownership(area_id, user_id)
     coordinates = await area_reader.get_geometry(area_id)
     request_hash = compute_request_hash(coordinates, date_start, date_end)

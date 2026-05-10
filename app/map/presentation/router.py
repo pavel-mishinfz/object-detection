@@ -1,13 +1,14 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import load_config
-from app.database import get_session
-from app.image.infrastructure.image_files_cleaner import ImageFilesCleaner
-from app.image.infrastructure.image_storage import FileImageStorage
+from app.composition import (
+    get_current_user_id,
+    get_image_files_cleaner,
+    get_polygon_repository,
+)
 from app.map.application import use_cases
+from app.map.application.interfaces import IImageFilesCleaner, IPolygonRepository
 from app.map.domain.errors import (
     PolygonAccessDeniedError,
     PolygonLimitExceededError,
@@ -15,7 +16,6 @@ from app.map.domain.errors import (
     PolygonNotFoundError,
     PolygonValidationError,
 )
-from app.map.infrastructure.repository import PolygonRepository
 from app.map.presentation.schemas import (
     CreatePolygonRequest,
     PolygonResponse,
@@ -24,27 +24,17 @@ from app.map.presentation.schemas import (
     to_response,
     to_summary_response,
 )
-from app.user.infrastructure.auth_backend import get_current_user_id
 
 router = APIRouter(prefix="/areas", tags=["areas"])
-cfg = load_config()
-
-
-def _get_storage() -> FileImageStorage:
-    return FileImageStorage(
-        temp_dir=cfg.sentinel_temp_dir,
-        images_dir=cfg.sentinel_images_dir,
-    )
 
 
 @router.post("/", response_model=PolygonResponse, status_code=201)
 async def create_area(
     payload: CreatePolygonRequest,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
-    session: AsyncSession = Depends(get_session),
+    repo: IPolygonRepository = Depends(get_polygon_repository),
 ) -> PolygonResponse:
     polygon_id = uuid.uuid4()
-    repo = PolygonRepository(session)
     try:
         await use_cases.create_polygon(
             polygon_id=polygon_id,
@@ -69,9 +59,8 @@ async def create_area(
 @router.get("/", response_model=list[PolygonSummaryResponse])
 async def get_user_areas(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
-    session: AsyncSession = Depends(get_session),
+    repo: IPolygonRepository = Depends(get_polygon_repository),
 ) -> list[PolygonSummaryResponse]:
-    repo = PolygonRepository(session)
     polygons = await use_cases.get_user_polygons(user_id=current_user_id, repo=repo)
     return [to_summary_response(p) for p in polygons]
 
@@ -80,9 +69,8 @@ async def get_user_areas(
 async def get_area(
     polygon_id: uuid.UUID,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
-    session: AsyncSession = Depends(get_session),
+    repo: IPolygonRepository = Depends(get_polygon_repository),
 ) -> PolygonResponse:
-    repo = PolygonRepository(session)
     try:
         return to_response(await use_cases.get_polygon(
             polygon_id=polygon_id,
@@ -100,9 +88,8 @@ async def update_area(
     polygon_id: uuid.UUID,
     payload: UpdatePolygonRequest,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
-    session: AsyncSession = Depends(get_session),
+    repo: IPolygonRepository = Depends(get_polygon_repository),
 ) -> PolygonResponse:
-    repo = PolygonRepository(session)
     try:
         await use_cases.update_polygon(
             polygon_id=polygon_id,
@@ -130,15 +117,15 @@ async def update_area(
 async def delete_area(
     polygon_id: uuid.UUID,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
-    session: AsyncSession = Depends(get_session),
+    repo: IPolygonRepository = Depends(get_polygon_repository),
+    image_files_cleaner: IImageFilesCleaner = Depends(get_image_files_cleaner),
 ) -> Response:
-    repo = PolygonRepository(session)
     try:
         await use_cases.delete_polygon(
             polygon_id=polygon_id,
             user_id=current_user_id,
             repo=repo,
-            image_files_cleaner=ImageFilesCleaner(session, _get_storage()),
+            image_files_cleaner=image_files_cleaner,
         )
     except PolygonNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

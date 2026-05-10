@@ -1,12 +1,9 @@
 import uuid
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, String, UUID
-from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.sql import func
 
-
-class Base(DeclarativeBase):
-    pass
+from app.shared.db import Base
 
 
 class Image(Base):

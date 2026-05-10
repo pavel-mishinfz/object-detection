@@ -11,7 +11,7 @@ class IImageFilesCleaner(Protocol):
 
 class IPolygonRepository(ABC):
     @abstractmethod
-    async def save(self, polygon: Polygon) -> Polygon:
+    async def save(self, polygon: Polygon) -> None:
         """Сохраняет полигон в БД"""
         pass
 
@@ -26,7 +26,7 @@ class IPolygonRepository(ABC):
         pass
 
     @abstractmethod
-    async def update(self, polygon: Polygon) -> Polygon:
+    async def update(self, polygon: Polygon) -> None:
         """Обновляет существующий полигон"""
         pass
 

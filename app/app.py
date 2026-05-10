@@ -1,0 +1,65 @@
+import json
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.analysis.domain.detection_result import ObjectType
+from app.analysis.infrastructure.detection_engine import YoloDetectionEngine
+from app.analysis.infrastructure.repository import ObjectTypeRepository
+from app.analysis.presentation.router import router as analysis_router
+from app.composition import set_detection_engine
+from app.config import load_config
+from app.image.presentation.router import router as image_router
+from app.map.presentation.router import router as map_router
+from app.shared.db import get_session, init_db
+from app.user.application import use_cases as user_use_cases
+from app.user.infrastructure.group_repository import GroupRepository
+from app.user.presentation.router import router as user_router
+
+cfg = load_config()
+
+
+async def _seed_groups() -> None:
+    with open(cfg.default_groups_config_path, encoding="utf-8") as f:
+        groups = json.load(f)
+    async for session in get_session():
+        repo = GroupRepository(session)
+        for g in groups:
+            await user_use_cases.upsert_group(group_id=g["id"], name=g["name"], repo=repo)
+        await session.commit()
+
+
+async def _seed_object_types() -> None:
+    with open(cfg.default_objects_config_path, encoding="utf-8") as f:
+        objects = json.load(f)
+    async for session in get_session():
+        repo = ObjectTypeRepository(session)
+        for o in objects:
+            await repo.upsert(ObjectType(id=o["id"], name=o["name"]))
+        await session.commit()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await init_db()
+    await _seed_groups()
+    await _seed_object_types()
+    set_detection_engine(YoloDetectionEngine(cfg.model_path))
+    yield
+
+
+app = FastAPI(title="Object Detection", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(user_router)
+app.include_router(map_router)
+app.include_router(image_router)
+app.include_router(analysis_router)

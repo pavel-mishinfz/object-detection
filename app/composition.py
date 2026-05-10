@@ -1,0 +1,158 @@
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.analysis.application.interfaces import (
+    IDetectionEngine,
+    IDetectionResultRepository,
+    IImageReader,
+    IObjectTypeRepository,
+)
+from app.analysis.infrastructure.repository import (
+    DetectionResultRepository,
+    ObjectTypeRepository,
+)
+from app.config import Config, load_config
+from app.image.application.interfaces import (
+    IAreaAccessPolicy,
+    IAreaReader,
+    IImageCache,
+    IImageRepository,
+    IImageStorage,
+    ISentinelGateway,
+)
+from app.image.infrastructure.image_cache import RedisImageCache
+from app.image.infrastructure.image_files_cleaner import ImageFilesCleaner
+from app.image.infrastructure.image_reader import ImageReader
+from app.image.infrastructure.image_storage import FileImageStorage
+from app.image.infrastructure.repository import ImageRepository
+from app.image.infrastructure.sentinel_gateway import SentinelHubGateway
+from app.map.application.interfaces import IImageFilesCleaner, IPolygonRepository
+from app.map.infrastructure.area_access_policy import AreaAccessPolicy
+from app.map.infrastructure.area_reader import AreaReader
+from app.map.infrastructure.repository import PolygonRepository
+from app.shared.db import get_session
+from app.user.application.interfaces import IGroupRepository
+from app.user.infrastructure.auth_backend import get_current_user_id  # re-export
+from app.user.infrastructure.group_repository import GroupRepository
+
+
+__all__ = [
+    "get_current_user_id",
+    "get_polygon_repository",
+    "get_area_access_policy",
+    "get_area_reader",
+    "get_image_storage",
+    "get_image_cache",
+    "get_sentinel_gateway",
+    "get_image_repository",
+    "get_image_files_cleaner",
+    "get_image_reader",
+    "get_detection_result_repository",
+    "get_object_type_repository",
+    "get_group_repository",
+    "get_detection_engine",
+    "set_detection_engine",
+]
+
+
+# --- Singleton: ML engine, инициализируется в lifespan ---
+
+_detection_engine: IDetectionEngine | None = None
+
+
+def set_detection_engine(engine: IDetectionEngine) -> None:
+    global _detection_engine
+    _detection_engine = engine
+
+
+def get_detection_engine() -> IDetectionEngine:
+    if _detection_engine is None:
+        raise RuntimeError(
+            "Detection engine is not initialized. Did lifespan startup run?"
+        )
+    return _detection_engine
+
+
+# --- Map ---
+
+def get_polygon_repository(
+    session: AsyncSession = Depends(get_session),
+) -> IPolygonRepository:
+    return PolygonRepository(session)
+
+
+def get_area_access_policy(
+    session: AsyncSession = Depends(get_session),
+) -> IAreaAccessPolicy:
+    return AreaAccessPolicy(session)
+
+
+def get_area_reader(
+    session: AsyncSession = Depends(get_session),
+) -> IAreaReader:
+    return AreaReader(session)
+
+
+# --- Image ---
+
+def get_image_storage(cfg: Config = Depends(load_config)) -> IImageStorage:
+    return FileImageStorage(
+        temp_dir=cfg.sentinel_temp_dir,
+        images_dir=cfg.sentinel_images_dir,
+    )
+
+
+def get_image_cache(cfg: Config = Depends(load_config)) -> IImageCache:
+    return RedisImageCache(
+        host=cfg.redis_host,
+        port=cfg.redis_port,
+        db=cfg.redis_db,
+    )
+
+
+def get_sentinel_gateway(cfg: Config = Depends(load_config)) -> ISentinelGateway:
+    return SentinelHubGateway(
+        client_id=cfg.sentinel_client_id,
+        client_secret=cfg.sentinel_client_secret.get_secret_value(),
+    )
+
+
+def get_image_repository(
+    session: AsyncSession = Depends(get_session),
+) -> IImageRepository:
+    return ImageRepository(session)
+
+
+def get_image_files_cleaner(
+    session: AsyncSession = Depends(get_session),
+    storage: IImageStorage = Depends(get_image_storage),
+) -> IImageFilesCleaner:
+    return ImageFilesCleaner(session, storage)
+
+
+def get_image_reader(
+    session: AsyncSession = Depends(get_session),
+) -> IImageReader:
+    return ImageReader(session)
+
+
+# --- Analysis ---
+
+def get_detection_result_repository(
+    session: AsyncSession = Depends(get_session),
+) -> IDetectionResultRepository:
+    return DetectionResultRepository(session)
+
+
+def get_object_type_repository(
+    session: AsyncSession = Depends(get_session),
+) -> IObjectTypeRepository:
+    return ObjectTypeRepository(session)
+
+
+# --- User ---
+
+def get_group_repository(
+    session: AsyncSession = Depends(get_session),
+) -> IGroupRepository:
+    return GroupRepository(session)

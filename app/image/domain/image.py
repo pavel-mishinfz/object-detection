@@ -19,16 +19,3 @@ class Image:
     path: str
     bounds: ImageBounds
     created_at: datetime
-
-
-@dataclass(frozen=True)
-class PreviewTile:
-    image_id: UUID
-    bounds: ImageBounds
-
-
-@dataclass(frozen=True)
-class TileResult:
-    image_id: UUID
-    tiff_bytes: bytes
-    bounds: ImageBounds

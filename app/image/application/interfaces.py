@@ -1,9 +1,23 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import date
 from typing import Protocol
 from uuid import UUID
 
-from app.image.domain.image import Image, PreviewTile, TileResult
+from app.image.domain.image import Image, ImageBounds
+
+
+@dataclass(frozen=True)
+class PreviewTile:
+    image_id: UUID
+    bounds: ImageBounds
+
+
+@dataclass(frozen=True)
+class TileResult:
+    image_id: UUID
+    tiff_bytes: bytes
+    bounds: ImageBounds
 
 
 class IAreaAccessPolicy(Protocol):
@@ -16,7 +30,7 @@ class IAreaReader(Protocol):
 
 class IImageRepository(ABC):
     @abstractmethod
-    async def save(self, image: Image) -> Image:
+    async def save(self, image: Image) -> None:
         pass
 
     @abstractmethod

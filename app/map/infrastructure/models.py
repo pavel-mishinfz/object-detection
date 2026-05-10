@@ -2,12 +2,9 @@ import uuid
 
 from geoalchemy2 import Geometry
 from sqlalchemy import Column, DateTime, String, UUID, UniqueConstraint
-from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.sql import func
 
-
-class Base(DeclarativeBase):
-    pass
+from app.shared.db import Base
 
 
 class Area(Base):

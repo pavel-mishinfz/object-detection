@@ -17,7 +17,7 @@ class DetectionResultRepository(IDetectionResultRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def save(self, result: DetectionResult) -> DetectionResult:
+    async def save(self, result: DetectionResult) -> None:
         record = DetectionResultRecord(
             id=result.id,
             area_id=result.area_id,
@@ -29,7 +29,6 @@ class DetectionResultRepository(IDetectionResultRepository):
         )
         self._session.add(record)
         await self._session.flush()
-        return result
 
     async def find_by_area(self, area_id: UUID) -> list[DetectionResult]:
         result = await self._session.execute(
@@ -57,7 +56,7 @@ class ObjectTypeRepository(IObjectTypeRepository):
         record = result.scalar_one_or_none()
         return to_domain_object_type(record) if record else None
 
-    async def upsert(self, object_type: ObjectType) -> ObjectType:
+    async def upsert(self, object_type: ObjectType) -> None:
         stmt = (
             pg_insert(ObjectTypeRecord)
             .values(id=object_type.id, name=object_type.name)
@@ -68,4 +67,3 @@ class ObjectTypeRepository(IObjectTypeRepository):
         )
         await self._session.execute(stmt)
         await self._session.flush()
-        return object_type

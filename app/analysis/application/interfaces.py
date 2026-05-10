@@ -29,7 +29,7 @@ class IImageReader(Protocol):
 
 class IDetectionResultRepository(ABC):
     @abstractmethod
-    async def save(self, result: DetectionResult) -> DetectionResult:
+    async def save(self, result: DetectionResult) -> None:
         pass
 
     @abstractmethod
@@ -53,5 +53,5 @@ class IObjectTypeRepository(ABC):
         pass
 
     @abstractmethod
-    async def upsert(self, object_type: ObjectType) -> ObjectType:
+    async def upsert(self, object_type: ObjectType) -> None:
         pass

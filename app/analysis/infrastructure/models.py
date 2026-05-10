@@ -2,12 +2,10 @@ import uuid
 
 from geoalchemy2 import Geometry
 from sqlalchemy import Column, DateTime, Double, ForeignKey, Integer, String, UUID
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-
-class Base(DeclarativeBase):
-    pass
+from app.shared.db import Base
 
 
 class ObjectType(Base):

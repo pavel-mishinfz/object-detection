@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_session
+from app.composition import get_group_repository
 from app.user.application import use_cases
+from app.user.application.interfaces import IGroupRepository
 from app.user.domain.errors import GroupNotFoundError, GroupValidationError
 from app.user.infrastructure.auth_backend import auth_backend, fastapi_users
-from app.user.infrastructure.group_repository import GroupRepository
 from app.user.presentation.schemas import (
     GroupCreate,
     GroupRead,
@@ -54,9 +53,8 @@ groups_router = APIRouter(prefix="/groups", tags=["groups"])
 @groups_router.post("/", response_model=GroupRead, status_code=201)
 async def create_group(
     payload: GroupCreate,
-    session: AsyncSession = Depends(get_session),
+    repo: IGroupRepository = Depends(get_group_repository),
 ) -> GroupRead:
-    repo = GroupRepository(session)
     try:
         await use_cases.create_group(name=payload.name, repo=repo)
     except GroupValidationError as e:
@@ -69,9 +67,8 @@ async def create_group(
 async def get_groups(
     skip: int = 0,
     limit: int = 100,
-    session: AsyncSession = Depends(get_session),
+    repo: IGroupRepository = Depends(get_group_repository),
 ) -> list[GroupRead]:
-    repo = GroupRepository(session)
     groups = await use_cases.get_groups(skip=skip, limit=limit, repo=repo)
     return [to_group_response(g) for g in groups]
 
@@ -79,9 +76,8 @@ async def get_groups(
 @groups_router.get("/{group_id}", response_model=GroupRead)
 async def get_group(
     group_id: int,
-    session: AsyncSession = Depends(get_session),
+    repo: IGroupRepository = Depends(get_group_repository),
 ) -> GroupRead:
-    repo = GroupRepository(session)
     try:
         group = await use_cases.get_group(group_id=group_id, repo=repo)
     except GroupNotFoundError as e:
@@ -93,9 +89,8 @@ async def get_group(
 async def update_group(
     group_id: int,
     payload: GroupUpdate,
-    session: AsyncSession = Depends(get_session),
+    repo: IGroupRepository = Depends(get_group_repository),
 ) -> GroupRead:
-    repo = GroupRepository(session)
     try:
         await use_cases.update_group(group_id=group_id, name=payload.name, repo=repo)
     except GroupNotFoundError as e:
@@ -109,9 +104,8 @@ async def update_group(
 @groups_router.delete("/{group_id}", status_code=204)
 async def delete_group(
     group_id: int,
-    session: AsyncSession = Depends(get_session),
+    repo: IGroupRepository = Depends(get_group_repository),
 ) -> Response:
-    repo = GroupRepository(session)
     try:
         await use_cases.delete_group(group_id=group_id, repo=repo)
     except GroupNotFoundError as e:

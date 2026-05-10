@@ -1,3 +1,6 @@
+from app.shared.errors import AccessDeniedError, NotFoundError
+
+
 class DomainError(Exception):
     pass
 
@@ -6,11 +9,11 @@ class PolygonValidationError(DomainError):
     pass
 
 
-class PolygonNotFoundError(DomainError):
+class PolygonNotFoundError(DomainError, NotFoundError):
     pass
 
 
-class PolygonAccessDeniedError(DomainError):
+class PolygonAccessDeniedError(DomainError, AccessDeniedError):
     pass
 
 

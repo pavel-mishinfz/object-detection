@@ -13,7 +13,7 @@ class ImageRepository(IImageRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def save(self, image: Image) -> Image:
+    async def save(self, image: Image) -> None:
         record = ImageRecord(
             id=image.id,
             area_id=image.area_id,
@@ -27,7 +27,6 @@ class ImageRepository(IImageRepository):
         )
         self._session.add(record)
         await self._session.flush()
-        return image
 
     async def find_by_id(self, image_id: UUID) -> Image | None:
         result = await self._session.execute(
