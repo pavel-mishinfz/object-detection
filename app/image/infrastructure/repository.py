@@ -26,7 +26,7 @@ class ImageRepository(IImageRepository):
             created_at=image.created_at,
         )
         self._session.add(record)
-        await self._session.flush()
+        await self._session.commit()
 
     async def find_by_id(self, image_id: UUID) -> Image | None:
         result = await self._session.execute(
@@ -47,4 +47,4 @@ class ImageRepository(IImageRepository):
         await self._session.execute(
             delete(ImageRecord).where(ImageRecord.area_id == area_id)
         )
-        await self._session.flush()
+        await self._session.commit()

@@ -2,7 +2,7 @@ import json
 import uuid
 from uuid import UUID
 
-import redis as redis_lib
+import redis.asyncio as redis_lib
 
 from app.image.application.interfaces import IImageCache, PreviewTile
 from app.image.domain.image import ImageBounds
@@ -18,7 +18,7 @@ class RedisImageCache(IImageCache):
         return f"image:preview:{area_id}"
 
     async def get(self, area_id: UUID) -> tuple[str, list[PreviewTile]] | None:
-        raw = self._redis.get(self._key(area_id))
+        raw = await self._redis.get(self._key(area_id))
         if raw is None:
             return None
         data = json.loads(raw)

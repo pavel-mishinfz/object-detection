@@ -41,7 +41,10 @@ class SentinelHubGateway(ISentinelGateway):
         config = SHConfig()
         config.sh_client_id = self._client_id
         config.sh_client_secret = self._client_secret
-        config.sh_base_url = "https://services.sentinel-hub.com"
+        config.sh_base_url = "https://sh.dataspace.copernicus.eu"
+        config.sh_token_url = (
+            "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+        )
         return config
 
     async def fetch_tiles(
@@ -66,7 +69,10 @@ class SentinelHubGateway(ISentinelGateway):
                 evalscript=_EVALSCRIPT,
                 input_data=[
                     SentinelHubRequest.input_data(
-                        data_collection=DataCollection.SENTINEL2_L2A,
+                        data_collection=DataCollection.SENTINEL2_L2A.define_from(
+                            name="sentinel-2-l2a",
+                            service_url="https://sh.dataspace.copernicus.eu"
+                        ),
                         time_interval=(date_start, date_end),
                         mosaicking_order=MosaickingOrder.LEAST_CC,
                         maxcc=_MAX_CLOUD_COVER,

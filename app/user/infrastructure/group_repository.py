@@ -15,7 +15,7 @@ class GroupRepository(IGroupRepository):
     async def create(self, name: str) -> None:
         record = GroupModel(name=name)
         self._session.add(record)
-        await self._session.flush()
+        await self._session.commit()
 
     async def find_by_id(self, group_id: int) -> Group | None:
         result = await self._session.execute(
@@ -43,13 +43,13 @@ class GroupRepository(IGroupRepository):
             .where(GroupModel.id == group.id)
             .values(name=group.name)
         )
-        await self._session.flush()
+        await self._session.commit()
 
     async def delete(self, group_id: int) -> None:
         await self._session.execute(
             delete(GroupModel).where(GroupModel.id == group_id)
         )
-        await self._session.flush()
+        await self._session.commit()
 
     async def upsert(self, group_id: int, name: str) -> None:
         stmt = pg_insert(GroupModel).values(id=group_id, name=name)
@@ -58,4 +58,4 @@ class GroupRepository(IGroupRepository):
             set_={"name": name},
         )
         await self._session.execute(stmt)
-        await self._session.flush()
+        await self._session.commit()

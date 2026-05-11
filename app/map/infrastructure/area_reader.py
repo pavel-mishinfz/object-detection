@@ -16,4 +16,4 @@ class AreaReader:
             select(Area.geometry).where(Area.id == area_id)
         )
         shapely_poly = to_shape(result.scalar_one())
-        return tuple((lon, lat) for lon, lat in shapely_poly.coords)
+        return tuple((lon, lat) for lon, lat in shapely_poly.exterior.coords)

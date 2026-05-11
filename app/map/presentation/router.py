@@ -30,7 +30,7 @@ from app.shared.db import get_session
 router = APIRouter(prefix="/areas", tags=["areas"])
 
 
-@router.post("/", response_model=PolygonResponse, status_code=201)
+@router.post("", response_model=PolygonResponse, status_code=201)
 async def create_area(
     payload: CreatePolygonRequest,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
@@ -58,7 +58,7 @@ async def create_area(
     ))
 
 
-@router.get("/", response_model=list[PolygonSummaryResponse])
+@router.get("", response_model=list[PolygonSummaryResponse])
 async def get_user_areas(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     repo: IPolygonRepository = Depends(get_polygon_repository),

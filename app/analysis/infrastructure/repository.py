@@ -28,7 +28,7 @@ class DetectionResultRepository(IDetectionResultRepository):
             created_at=result.created_at,
         )
         self._session.add(record)
-        await self._session.flush()
+        await self._session.commit()
 
     async def find_by_area(self, area_id: UUID) -> list[DetectionResult]:
         result = await self._session.execute(
@@ -42,7 +42,7 @@ class DetectionResultRepository(IDetectionResultRepository):
         await self._session.execute(
             delete(DetectionResultRecord).where(DetectionResultRecord.area_id == area_id)
         )
-        await self._session.flush()
+        await self._session.commit()
 
 
 class ObjectTypeRepository(IObjectTypeRepository):
@@ -66,4 +66,4 @@ class ObjectTypeRepository(IObjectTypeRepository):
             )
         )
         await self._session.execute(stmt)
-        await self._session.flush()
+        await self._session.commit()

@@ -11,7 +11,7 @@ def to_domain_object_type(record: ObjectTypeRecord) -> ObjectType:
 
 def to_domain_detection_result(record: DetectionResultRecord) -> DetectionResult:
     shapely_geom = to_shape(record.geometry)
-    coords = tuple((lon, lat) for lon, lat in shapely_geom.coords)
+    coords = tuple((lon, lat) for lon, lat in shapely_geom.exterior.coords)
     return DetectionResult(
         id=record.id,
         area_id=record.area_id,

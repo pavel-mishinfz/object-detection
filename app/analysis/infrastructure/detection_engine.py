@@ -5,8 +5,8 @@ from ultralytics import YOLO
 
 from app.analysis.application.interfaces import IDetectionEngine, RawDetection
 
-_CONF_THRESHOLD = 0.1
-_NMS_IOU = 0.3
+_CONF_THRESHOLD = 0.45
+_NMS_IOU = 0.6
 
 
 class YoloDetectionEngine(IDetectionEngine):

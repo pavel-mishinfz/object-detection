@@ -24,5 +24,5 @@ def wkb_to_coords(wkb) -> tuple[Coordinate, ...]:
     shapely_poly = to_shape(wkb)
     return tuple(
         Coordinate(lat=lat, lon=lon)
-        for lon, lat in shapely_poly.coords
+        for lat, lon in shapely_poly.exterior.coords
     )

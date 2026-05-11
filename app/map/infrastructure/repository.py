@@ -22,7 +22,7 @@ class PolygonRepository(IPolygonRepository):
             created_at=polygon.created_at,
         )
         self._session.add(record)
-        await self._session.flush()
+        await self._session.commit()
 
     async def find_by_id(self, polygon_id: UUID) -> Polygon | None:
         result = await self._session.execute(
@@ -48,13 +48,13 @@ class PolygonRepository(IPolygonRepository):
                 geometry=coords_to_wkb(polygon.coordinates),
             )
         )
-        await self._session.flush()
+        await self._session.commit()
 
     async def delete(self, polygon_id: UUID) -> None:
         await self._session.execute(
             delete(Area).where(Area.id == polygon_id)
         )
-        await self._session.flush()
+        await self._session.commit()
 
     async def exists_with_name(
         self, user_id: UUID, name: str, exclude_id: UUID | None = None
