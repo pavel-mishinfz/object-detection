@@ -21,8 +21,8 @@ class DetectionResult(Base):
     __tablename__ = "detection_result"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    area_id = Column(UUID(as_uuid=True), ForeignKey("area.id", ondelete="CASCADE"), nullable=False, index=True)
-    image_id = Column(UUID(as_uuid=True), ForeignKey("image.id", ondelete="CASCADE"), nullable=False, index=True)
+    area_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    image_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     geometry = Column(Geometry(geometry_type="POLYGON", srid=4326), nullable=False)
     score = Column(Double, nullable=False)
     object_type_id = Column(Integer, ForeignKey("object_type.id"), nullable=False)
