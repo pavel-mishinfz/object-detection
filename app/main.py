@@ -55,9 +55,9 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Object Detection", lifespan=lifespan)
+application = FastAPI(title="Object Detection", lifespan=lifespan)
 
-app.add_middleware(
+application.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
@@ -65,7 +65,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(user_router)
-app.include_router(map_router)
-app.include_router(image_router)
-app.include_router(analysis_router)
+application.include_router(user_router)
+application.include_router(map_router)
+application.include_router(image_router)
+application.include_router(analysis_router)
