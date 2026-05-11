@@ -9,7 +9,8 @@ from app.map.domain.errors import (
 )
 from app.map.domain.polygon import Coordinate, Polygon
 from app.map.domain.validators import validate_name, validate_polygon_geometry
-from app.map.application.interfaces import IImageFilesCleaner, IPolygonRepository
+from app.map.application.interfaces import IEventPublisher, IPolygonRepository
+from app.shared.events import AreaDeleted
 
 
 # --- Чистые сборщики (нет IO, нет await) ---
@@ -107,15 +108,15 @@ async def delete_polygon(
     polygon_id: UUID,
     user_id: UUID,
     repo: IPolygonRepository,
-    image_files_cleaner: IImageFilesCleaner,
+    publisher: IEventPublisher,
 ) -> None:
     existing = await repo.find_by_id(polygon_id)
     if existing is None:
         raise PolygonNotFoundError(f"Полигон {polygon_id} не найден")
     if existing.user_id != user_id:
         raise PolygonAccessDeniedError("Нет доступа к данному полигону")
-    await image_files_cleaner.delete_files_by_area(polygon_id)
     await repo.delete(polygon_id)
+    await publisher.publish(AreaDeleted(area_id=polygon_id))
 
 
 # --- Запросы (impure, возвращают данные) ---

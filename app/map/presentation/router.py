@@ -1,14 +1,15 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition import (
     get_current_user_id,
-    get_image_files_cleaner,
+    get_event_publisher,
     get_polygon_repository,
 )
 from app.map.application import use_cases
-from app.map.application.interfaces import IImageFilesCleaner, IPolygonRepository
+from app.map.application.interfaces import IEventPublisher, IPolygonRepository
 from app.map.domain.errors import (
     PolygonAccessDeniedError,
     PolygonLimitExceededError,
@@ -24,6 +25,7 @@ from app.map.presentation.schemas import (
     to_response,
     to_summary_response,
 )
+from app.shared.db import get_session
 
 router = APIRouter(prefix="/areas", tags=["areas"])
 
@@ -118,17 +120,20 @@ async def delete_area(
     polygon_id: uuid.UUID,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     repo: IPolygonRepository = Depends(get_polygon_repository),
-    image_files_cleaner: IImageFilesCleaner = Depends(get_image_files_cleaner),
+    publisher: IEventPublisher = Depends(get_event_publisher),
+    session: AsyncSession = Depends(get_session),
 ) -> Response:
     try:
         await use_cases.delete_polygon(
             polygon_id=polygon_id,
             user_id=current_user_id,
             repo=repo,
-            image_files_cleaner=image_files_cleaner,
+            publisher=publisher,
         )
     except PolygonNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except PolygonAccessDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    await session.commit()
+    await publisher.run_post_commit()
     return Response(status_code=204)

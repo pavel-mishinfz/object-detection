@@ -5,8 +5,9 @@ from uuid import UUID
 from app.map.domain.polygon import Polygon
 
 
-class IImageFilesCleaner(Protocol):
-    async def delete_files_by_area(self, area_id: UUID) -> None: ...
+class IEventPublisher(Protocol):
+    async def publish(self, event: object) -> None: ...
+    async def run_post_commit(self) -> None: ...
 
 
 class IPolygonRepository(ABC):

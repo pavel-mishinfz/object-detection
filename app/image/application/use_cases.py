@@ -130,9 +130,9 @@ async def delete_images(
 ) -> None:
     await area_access_policy.check_ownership(area_id, user_id)
     images = await repo.find_by_area(area_id)
+    await repo.delete_by_area(area_id)
     for image in images:
         await storage.delete(image.path)
-    await repo.delete_by_area(area_id)
 
 
 # --- Запросы (impure, возвращают данные) ---
