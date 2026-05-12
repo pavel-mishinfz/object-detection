@@ -58,6 +58,20 @@ async def fetch_previews(
         await storage.save_temp(area_id, result.image_id, result.tiff_bytes)
 
 
+async def delete_previews(
+    area_id: UUID,
+    user_id: UUID,
+    area_access_policy: IAreaAccessPolicy,
+    storage: IImageStorage,
+) -> None:
+    await area_access_policy.check_ownership(area_id, user_id)
+
+    temp_tile_ids = await storage.list_temp_by_area(area_id)
+    for tile_id in temp_tile_ids:
+        tile_path = storage.find_temp_path(tile_id)
+        await storage.delete(tile_path)
+
+
 async def save_images(
     area_id: UUID,
     user_id: UUID,

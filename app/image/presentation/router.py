@@ -51,6 +51,12 @@ async def preview_images(
     storage: IImageStorage = Depends(get_image_storage),
 ) -> list[PreviewTileResponse]:
     try:
+        await use_cases.delete_previews(
+            area_id=payload.area_id,
+            user_id=current_user_id,
+            area_access_policy=area_access_policy,
+            storage=storage
+        )
         await use_cases.fetch_previews(
             area_id=payload.area_id,
             user_id=current_user_id,
