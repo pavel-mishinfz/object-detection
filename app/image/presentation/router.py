@@ -65,7 +65,6 @@ async def preview_images(
             cache=cache,
             storage=storage,
         )
-        return []
         tiles = await use_cases.get_preview_tiles(
             area_id=payload.area_id,
             user_id=current_user_id,
