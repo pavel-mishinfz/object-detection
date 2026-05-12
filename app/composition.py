@@ -17,12 +17,10 @@ from app.config import Config, load_config
 from app.image.application.interfaces import (
     IAreaAccessPolicy,
     IAreaReader,
-    IImageCache,
     IImageRepository,
     IImageStorage,
     ISentinelGateway,
 )
-from app.image.infrastructure.image_cache import RedisImageCache
 from app.image.infrastructure.image_reader import ImageReader
 from app.image.infrastructure.image_storage import FileImageStorage
 from app.image.infrastructure.repository import ImageRepository
@@ -44,7 +42,6 @@ __all__ = [
     "get_area_access_policy",
     "get_area_reader",
     "get_image_storage",
-    "get_image_cache",
     "get_sentinel_gateway",
     "get_image_repository",
     "get_image_reader",
@@ -123,14 +120,6 @@ def get_image_storage(cfg: Config = Depends(load_config)) -> IImageStorage:
     return FileImageStorage(
         temp_dir=cfg.sentinel_temp_dir,
         images_dir=cfg.sentinel_images_dir,
-    )
-
-
-def get_image_cache(cfg: Config = Depends(load_config)) -> IImageCache:
-    return RedisImageCache(
-        host=cfg.redis_host,
-        port=cfg.redis_port,
-        db=cfg.redis_db,
     )
 
 

@@ -64,7 +64,19 @@ class ISentinelGateway(ABC):
 
 class IImageStorage(ABC):
     @abstractmethod
-    async def save_temp(self, image_id: UUID, data: bytes) -> None:
+    async def save_temp(self, area_id: UUID, image_id: UUID, data: bytes) -> None:
+        pass
+
+    @abstractmethod
+    async def list_temp_by_area(self, area_id: UUID) -> list[UUID]:
+        pass
+
+    @abstractmethod
+    async def get_temp_bounds(self, image_id: UUID) -> ImageBounds:
+        pass
+
+    @abstractmethod
+    def find_temp_path(self, image_id: UUID) -> str | None:
         pass
 
     @abstractmethod
@@ -77,31 +89,4 @@ class IImageStorage(ABC):
 
     @abstractmethod
     async def load_as_png_bytes(self, path: str) -> bytes:
-        pass
-
-    @abstractmethod
-    def get_temp_path(self, image_id: UUID) -> str:
-        pass
-
-    @abstractmethod
-    def path_exists(self, path: str) -> bool:
-        pass
-
-
-class IImageCache(ABC):
-    @abstractmethod
-    async def get(self, area_id: UUID) -> tuple[str, list[PreviewTile]] | None:
-        pass
-
-    @abstractmethod
-    async def set(
-        self,
-        area_id: UUID,
-        request_hash: str,
-        tiles: list[PreviewTile],
-    ) -> None:
-        pass
-
-    @abstractmethod
-    async def invalidate(self, area_id: UUID) -> None:
         pass

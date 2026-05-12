@@ -8,7 +8,6 @@ from app.composition import (
     get_area_access_policy,
     get_area_reader,
     get_current_user_id,
-    get_image_cache,
     get_image_repository,
     get_image_storage,
     get_sentinel_gateway,
@@ -18,7 +17,6 @@ from app.image.application import use_cases
 from app.image.application.interfaces import (
     IAreaAccessPolicy,
     IAreaReader,
-    IImageCache,
     IImageRepository,
     IImageStorage,
     ISentinelGateway,
@@ -50,7 +48,6 @@ async def preview_images(
     area_access_policy: IAreaAccessPolicy = Depends(get_area_access_policy),
     area_reader: IAreaReader = Depends(get_area_reader),
     gateway: ISentinelGateway = Depends(get_sentinel_gateway),
-    cache: IImageCache = Depends(get_image_cache),
     storage: IImageStorage = Depends(get_image_storage),
 ) -> list[PreviewTileResponse]:
     try:
@@ -62,14 +59,13 @@ async def preview_images(
             area_access_policy=area_access_policy,
             area_reader=area_reader,
             gateway=gateway,
-            cache=cache,
             storage=storage,
         )
         tiles = await use_cases.get_preview_tiles(
             area_id=payload.area_id,
             user_id=current_user_id,
             area_access_policy=area_access_policy,
-            cache=cache,
+            storage=storage,
         )
         return [to_preview_response(t) for t in tiles]
     except InvalidDateRangeError as e:
@@ -87,7 +83,6 @@ async def save_images(
     area_access_policy: IAreaAccessPolicy = Depends(get_area_access_policy),
     repo: IImageRepository = Depends(get_image_repository),
     storage: IImageStorage = Depends(get_image_storage),
-    cache: IImageCache = Depends(get_image_cache),
 ) -> list[ImageResponse]:
     try:
         await use_cases.save_images(
@@ -96,7 +91,6 @@ async def save_images(
             area_access_policy=area_access_policy,
             repo=repo,
             storage=storage,
-            cache=cache,
         )
         images = await use_cases.get_images(
             area_id=payload.area_id,
@@ -183,4 +177,3 @@ async def delete_images(
     await session.commit()
     await publisher.run_post_commit()
     return Response(status_code=204)
-

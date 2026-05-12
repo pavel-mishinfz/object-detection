@@ -1,5 +1,3 @@
-import hashlib
-import json
 from datetime import date, datetime
 from uuid import UUID
 
@@ -12,7 +10,6 @@ from app.image.application.interfaces import (
     IAreaAccessPolicy,
     IAreaReader,
     IEventPublisher,
-    IImageCache,
     IImageRepository,
     IImageStorage,
     ISentinelGateway,
@@ -20,23 +17,6 @@ from app.image.application.interfaces import (
 )
 from app.image.domain.validators import validate_date_range
 from app.shared.events import ImagesDeleted
-
-
-# --- Чистые функции (нет IO) ---
-
-def compute_request_hash(
-    coordinates: tuple[tuple[float, float], ...],
-    date_start: date,
-    date_end: date,
-) -> str:
-    data = {
-        "coordinates": sorted(coordinates),
-        "date_start": date_start.isoformat(),
-        "date_end": date_end.isoformat(),
-    }
-    return hashlib.sha256(
-        json.dumps(data, sort_keys=True).encode()
-    ).hexdigest()
 
 
 def build_image(
@@ -66,28 +46,16 @@ async def fetch_previews(
     area_access_policy: IAreaAccessPolicy,
     area_reader: IAreaReader,
     gateway: ISentinelGateway,
-    cache: IImageCache,
     storage: IImageStorage,
 ) -> None:
     validate_date_range(date_start, date_end, date.today())
     await area_access_policy.check_ownership(area_id, user_id)
     coordinates = await area_reader.get_geometry(area_id)
-    request_hash = compute_request_hash(coordinates, date_start, date_end)
-
-    cached = await cache.get(area_id)
-    if cached is not None:
-        cached_hash, _ = cached
-        if cached_hash == request_hash:
-            return
 
     tile_results = await gateway.fetch_tiles(coordinates, date_start, date_end)
 
-    tiles: list[PreviewTile] = []
     for result in tile_results:
-        await storage.save_temp(result.image_id, result.tiff_bytes)
-        tiles.append(PreviewTile(image_id=result.image_id, bounds=result.bounds))
-
-    await cache.set(area_id, request_hash, tiles)
+        await storage.save_temp(area_id, result.image_id, result.tiff_bytes)
 
 
 async def save_images(
@@ -96,31 +64,27 @@ async def save_images(
     area_access_policy: IAreaAccessPolicy,
     repo: IImageRepository,
     storage: IImageStorage,
-    cache: IImageCache,
 ) -> None:
     await area_access_policy.check_ownership(area_id, user_id)
 
-    cached = await cache.get(area_id)
-    if cached is None:
+    image_ids = await storage.list_temp_by_area(area_id)
+    if not image_ids:
         raise NoPreviewAvailableError(
             "Нет данных предпросмотра для сохранения. Выполните предпросмотр снимков."
         )
 
-    _, tiles = cached
     now = datetime.now()
-
-    for tile in tiles:
-        path = await storage.promote_to_permanent(tile.image_id)
+    for image_id in image_ids:
+        bounds = await storage.get_temp_bounds(image_id)
+        path = await storage.promote_to_permanent(image_id)
         image = build_image(
-            image_id=tile.image_id,
+            image_id=image_id,
             area_id=area_id,
             path=path,
-            bounds=tile.bounds,
+            bounds=bounds,
             created_at=now,
         )
         await repo.save(image)
-
-    await cache.invalidate(area_id)
 
 
 async def delete_images(
@@ -145,15 +109,18 @@ async def get_preview_tiles(
     area_id: UUID,
     user_id: UUID,
     area_access_policy: IAreaAccessPolicy,
-    cache: IImageCache,
+    storage: IImageStorage,
 ) -> list[PreviewTile]:
     await area_access_policy.check_ownership(area_id, user_id)
-    cached = await cache.get(area_id)
-    if cached is None:
-        return []
-    _, tiles = cached
+    
+    tiles: list[PreviewTile] = []
+    image_ids = await storage.list_temp_by_area(area_id)
+    
+    for image_id in image_ids:
+        bounds = await storage.get_temp_bounds(image_id)
+        tiles.append(PreviewTile(image_id, bounds))
+    
     return tiles
-
 
 async def get_images(
     area_id: UUID,
@@ -177,8 +144,8 @@ async def get_image_as_png(
         await area_access_policy.check_ownership(image.area_id, user_id)
         return await storage.load_as_png_bytes(image.path)
 
-    temp_path = storage.get_temp_path(image_id)
-    if storage.path_exists(temp_path):
+    temp_path = storage.find_temp_path(image_id)
+    if temp_path is not None:
         return await storage.load_as_png_bytes(temp_path)
 
     raise ImageNotFoundError(f"Снимок {image_id} не найден")
