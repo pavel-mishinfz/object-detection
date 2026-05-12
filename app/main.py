@@ -4,7 +4,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.analysis.application.event_handlers import on_area_deleted as analysis_on_area_deleted
+from app.analysis.application.event_handlers import (
+    on_area_deleted as analysis_on_area_deleted,
+    on_images_deleted as analysis_on_images_deleted
+)
 from app.analysis.domain.detection_result import ObjectType
 from app.analysis.infrastructure.detection_engine import YoloDetectionEngine
 from app.analysis.infrastructure.repository import ObjectTypeRepository
@@ -16,7 +19,7 @@ from app.image.presentation.router import router as image_router
 from app.map.presentation.router import router as map_router
 from app.shared import event_bus
 from app.shared.db import get_session, init_db
-from app.shared.events import AreaDeleted
+from app.shared.events import AreaDeleted, ImagesDeleted
 from app.user.application import use_cases as user_use_cases
 from app.user.infrastructure.group_repository import GroupRepository
 from app.user.presentation.router import router as user_router
@@ -51,6 +54,7 @@ async def lifespan(_: FastAPI):
     await _seed_object_types()
     set_detection_engine(YoloDetectionEngine(cfg.model_path))
     event_bus.subscribe(AreaDeleted, analysis_on_area_deleted)
+    event_bus.subscribe(ImagesDeleted, analysis_on_images_deleted)
     event_bus.subscribe(AreaDeleted, image_on_area_deleted)
     yield
 

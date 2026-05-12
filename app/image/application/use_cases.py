@@ -11,6 +11,7 @@ from app.image.domain.image import Image, ImageBounds
 from app.image.application.interfaces import (
     IAreaAccessPolicy,
     IAreaReader,
+    IEventPublisher,
     IImageCache,
     IImageRepository,
     IImageStorage,
@@ -18,6 +19,7 @@ from app.image.application.interfaces import (
     PreviewTile,
 )
 from app.image.domain.validators import validate_date_range
+from app.shared.events import ImagesDeleted
 
 
 # --- Чистые функции (нет IO) ---
@@ -127,10 +129,12 @@ async def delete_images(
     area_access_policy: IAreaAccessPolicy,
     repo: IImageRepository,
     storage: IImageStorage,
+    publisher: IEventPublisher
 ) -> None:
     await area_access_policy.check_ownership(area_id, user_id)
     images = await repo.find_by_area(area_id)
     await repo.delete_by_area(area_id)
+    await publisher.publish(ImagesDeleted(image_ids=[img.id for img in images]))
     for image in images:
         await storage.delete(image.path)
 

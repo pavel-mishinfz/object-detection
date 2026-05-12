@@ -47,4 +47,4 @@ class ImageRepository(IImageRepository):
         await self._session.execute(
             delete(ImageRecord).where(ImageRecord.area_id == area_id)
         )
-        await self._session.commit()
+        await self._session.flush()

@@ -42,7 +42,13 @@ class DetectionResultRepository(IDetectionResultRepository):
         await self._session.execute(
             delete(DetectionResultRecord).where(DetectionResultRecord.area_id == area_id)
         )
-        await self._session.commit()
+        await self._session.flush()
+        
+    async def delete_by_images(self, image_ids: list[UUID]) -> None:
+        await self._session.execute(
+            delete(DetectionResultRecord).where(DetectionResultRecord.image_id.in_(image_ids))
+        )
+        await self._session.flush()
 
 
 class ObjectTypeRepository(IObjectTypeRepository):

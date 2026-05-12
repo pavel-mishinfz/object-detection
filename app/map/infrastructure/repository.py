@@ -54,7 +54,7 @@ class PolygonRepository(IPolygonRepository):
         await self._session.execute(
             delete(Area).where(Area.id == polygon_id)
         )
-        await self._session.commit()
+        await self._session.flush()
 
     async def exists_with_name(
         self, user_id: UUID, name: str, exclude_id: UUID | None = None

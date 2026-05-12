@@ -2,6 +2,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import Response as FastAPIResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.composition import (
     get_area_access_policy,
@@ -11,6 +12,7 @@ from app.composition import (
     get_image_repository,
     get_image_storage,
     get_sentinel_gateway,
+    get_event_publisher
 )
 from app.image.application import use_cases
 from app.image.application.interfaces import (
@@ -20,6 +22,7 @@ from app.image.application.interfaces import (
     IImageRepository,
     IImageStorage,
     ISentinelGateway,
+    IEventPublisher
 )
 from app.image.domain.errors import (
     ImageNotFoundError,
@@ -34,6 +37,7 @@ from app.image.presentation.schemas import (
     to_image_response,
     to_preview_response,
 )
+from app.shared.db import get_session
 from app.shared.errors import AccessDeniedError, NotFoundError
 
 router = APIRouter(prefix="/images", tags=["images"])
@@ -61,6 +65,7 @@ async def preview_images(
             cache=cache,
             storage=storage,
         )
+        return []
         tiles = await use_cases.get_preview_tiles(
             area_id=payload.area_id,
             user_id=current_user_id,
@@ -160,6 +165,8 @@ async def delete_images(
     area_access_policy: IAreaAccessPolicy = Depends(get_area_access_policy),
     repo: IImageRepository = Depends(get_image_repository),
     storage: IImageStorage = Depends(get_image_storage),
+    publisher: IEventPublisher = Depends(get_event_publisher),
+    session: AsyncSession = Depends(get_session),
 ) -> Response:
     try:
         await use_cases.delete_images(
@@ -168,9 +175,13 @@ async def delete_images(
             area_access_policy=area_access_policy,
             repo=repo,
             storage=storage,
+            publisher=publisher
         )
-        return Response(status_code=204)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    await session.commit()
+    await publisher.run_post_commit()
+    return Response(status_code=204)
+
