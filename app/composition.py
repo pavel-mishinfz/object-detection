@@ -4,13 +4,13 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analysis.application.interfaces import (
-    IDetectionEngine,
-    IDetectionResultRepository,
+    ISegmentationEngine,
+    ISegmentationResultRepository,
     IImageReader,
     IObjectTypeRepository,
 )
 from app.analysis.infrastructure.repository import (
-    DetectionResultRepository,
+    SegmentationResultRepository,
     ObjectTypeRepository,
 )
 from app.config import Config, load_config
@@ -45,31 +45,31 @@ __all__ = [
     "get_sentinel_gateway",
     "get_image_repository",
     "get_image_reader",
-    "get_detection_result_repository",
+    "get_segmentation_result_repository",
     "get_object_type_repository",
     "get_group_repository",
-    "get_detection_engine",
-    "set_detection_engine",
+    "get_segmentation_engine",
+    "set_segmentation_engine",
     "get_event_publisher",
 ]
 
 
 # --- Singleton: ML engine, инициализируется в lifespan ---
 
-_detection_engine: IDetectionEngine | None = None
+_segmentation_engine: ISegmentationEngine | None = None
 
 
-def set_detection_engine(engine: IDetectionEngine) -> None:
-    global _detection_engine
-    _detection_engine = engine
+def set_segmentation_engine(engine: ISegmentationEngine) -> None:
+    global _segmentation_engine
+    _segmentation_engine = engine
 
 
-def get_detection_engine() -> IDetectionEngine:
-    if _detection_engine is None:
+def get_segmentation_engine() -> ISegmentationEngine:
+    if _segmentation_engine is None:
         raise RuntimeError(
-            "Detection engine is not initialized. Did lifespan startup run?"
+            "Segmentation engine is not initialized. Did lifespan startup run?"
         )
-    return _detection_engine
+    return _segmentation_engine
 
 
 # --- Event publisher ---
@@ -144,10 +144,10 @@ def get_image_reader(
 
 # --- Analysis ---
 
-def get_detection_result_repository(
+def get_segmentation_result_repository(
     session: AsyncSession = Depends(get_session),
-) -> IDetectionResultRepository:
-    return DetectionResultRepository(session)
+) -> ISegmentationResultRepository:
+    return SegmentationResultRepository(session)
 
 
 def get_object_type_repository(

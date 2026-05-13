@@ -6,47 +6,46 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analysis.application.interfaces import IDetectionResultRepository, IObjectTypeRepository
-from app.analysis.domain.detection_result import DetectionResult, ObjectType
-from app.analysis.infrastructure.mappers import to_domain_detection_result, to_domain_object_type
-from app.analysis.infrastructure.models import DetectionResult as DetectionResultRecord
+from app.analysis.application.interfaces import IObjectTypeRepository, ISegmentationResultRepository
+from app.analysis.domain.segmentation_result import ObjectType, SegmentationResult
+from app.analysis.infrastructure.mappers import to_domain_object_type, to_domain_segmentation_result
 from app.analysis.infrastructure.models import ObjectType as ObjectTypeRecord
+from app.analysis.infrastructure.models import SegmentationRecord
 
 
-class DetectionResultRepository(IDetectionResultRepository):
+class SegmentationResultRepository(ISegmentationResultRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def save(self, result: DetectionResult) -> None:
-        record = DetectionResultRecord(
+    async def save(self, result: SegmentationResult) -> None:
+        record = SegmentationRecord(
             id=result.id,
             area_id=result.area_id,
             image_id=result.image_id,
             geometry=from_shape(Polygon(result.geometry), srid=4326),
-            score=result.score,
             object_type_id=result.object_type.id,
             created_at=result.created_at,
         )
         self._session.add(record)
         await self._session.commit()
 
-    async def find_by_area(self, area_id: UUID) -> list[DetectionResult]:
+    async def find_by_area(self, area_id: UUID) -> list[SegmentationResult]:
         result = await self._session.execute(
-            select(DetectionResultRecord)
-            .where(DetectionResultRecord.area_id == area_id)
-            .order_by(DetectionResultRecord.created_at.desc())
+            select(SegmentationRecord)
+            .where(SegmentationRecord.area_id == area_id)
+            .order_by(SegmentationRecord.created_at.desc())
         )
-        return [to_domain_detection_result(r) for r in result.scalars().all()]
+        return [to_domain_segmentation_result(r) for r in result.scalars().all()]
 
     async def delete_by_area(self, area_id: UUID) -> None:
         await self._session.execute(
-            delete(DetectionResultRecord).where(DetectionResultRecord.area_id == area_id)
+            delete(SegmentationRecord).where(SegmentationRecord.area_id == area_id)
         )
         await self._session.flush()
-        
+
     async def delete_by_images(self, image_ids: list[UUID]) -> None:
         await self._session.execute(
-            delete(DetectionResultRecord).where(DetectionResultRecord.image_id.in_(image_ids))
+            delete(SegmentationRecord).where(SegmentationRecord.image_id.in_(image_ids))
         )
         await self._session.flush()
 

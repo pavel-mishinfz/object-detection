@@ -3,13 +3,12 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
-from app.analysis.domain.detection_result import DetectionResult, ObjectType
+from app.analysis.domain.segmentation_result import ObjectType, SegmentationResult
 
 
 @dataclass(frozen=True)
-class RawDetection:
+class RawContour:
     geo_polygon: tuple[tuple[float, float], ...]  # (lon, lat), closed ring
-    score: float
     object_type_id: int
 
 
@@ -27,23 +26,31 @@ class IImageReader(Protocol):
     async def get_images_for_area(self, area_id: UUID) -> list[ImageInfo]: ...
 
 
-class IDetectionResultRepository(ABC):
+class ISegmentationResultRepository(ABC):
     @abstractmethod
-    async def save(self, result: DetectionResult) -> None:
+    async def save(self, result: SegmentationResult) -> None:
         pass
 
     @abstractmethod
-    async def find_by_area(self, area_id: UUID) -> list[DetectionResult]:
+    async def find_by_area(self, area_id: UUID) -> list[SegmentationResult]:
         pass
 
     @abstractmethod
     async def delete_by_area(self, area_id: UUID) -> None:
         pass
 
-
-class IDetectionEngine(ABC):
     @abstractmethod
-    def detect(self, image_path: str) -> list[RawDetection]:
+    async def delete_by_images(self, image_ids: list[UUID]) -> None:
+        pass
+
+
+class ISegmentationEngine(ABC):
+    @abstractmethod
+    def load(self, model_name: str) -> None:
+        pass
+    
+    @abstractmethod
+    def segment(self, image_path: str) -> list[RawContour]:
         pass
 
 

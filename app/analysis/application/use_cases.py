@@ -2,48 +2,27 @@ import uuid
 from datetime import datetime
 from uuid import UUID
 
-from app.analysis.domain.detection_result import DetectionResult, ObjectType
+from app.analysis.domain.segmentation_result import ObjectType, SegmentationResult
 from app.analysis.domain.errors import NoImagesError
 from app.analysis.application.interfaces import (
     IAreaAccessPolicy,
-    IDetectionEngine,
-    IDetectionResultRepository,
+    ISegmentationEngine,
+    ISegmentationResultRepository,
     IImageReader,
     IObjectTypeRepository,
 )
 
 
-# --- Чистые функции (нет IO) ---
-
-def build_detection_result(
-    result_id: UUID,
-    area_id: UUID,
-    image_id: UUID,
-    geo_polygon: tuple[tuple[float, float], ...],
-    score: float,
-    object_type: ObjectType,
-    created_at: datetime,
-) -> DetectionResult:
-    return DetectionResult(
-        id=result_id,
-        area_id=area_id,
-        image_id=image_id,
-        geometry=geo_polygon,
-        score=score,
-        object_type=object_type,
-        created_at=created_at,
-    )
-
-
 # --- Команды (impure, -> None) ---
 
-async def run_analysis(
+async def run_segmentation(
     area_id: UUID,
     user_id: UUID,
+    model_name: str,
     area_access_policy: IAreaAccessPolicy,
     image_reader: IImageReader,
-    engine: IDetectionEngine,
-    repo: IDetectionResultRepository,
+    engine: ISegmentationEngine,
+    repo: ISegmentationResultRepository,
     object_type_repo: IObjectTypeRepository,
 ) -> None:
     await area_access_policy.check_ownership(area_id, user_id)
@@ -57,29 +36,29 @@ async def run_analysis(
         raise NoImagesError("Нет сохраненных снимков для указанного полигона")
 
     now = datetime.now()
+    engine.load(model_name)
     for image in images:
-        detections = engine.detect(image.path)
-        for raw in detections:
+        contours = engine.segment(image.path)
+        for raw in contours:
             object_type = await object_type_repo.find_by_id(raw.object_type_id)
             if object_type is None:
                 continue
-            result = build_detection_result(
-                result_id=uuid.uuid4(),
+            result = SegmentationResult(
+                id=uuid.uuid4(),
                 area_id=area_id,
                 image_id=image.id,
-                geo_polygon=raw.geo_polygon,
-                score=raw.score,
+                geometry=raw.geo_polygon,
                 object_type=object_type,
                 created_at=now,
             )
             await repo.save(result)
 
 
-async def delete_results(
+async def delete_segmentation_results(
     area_id: UUID,
     user_id: UUID,
     area_access_policy: IAreaAccessPolicy,
-    repo: IDetectionResultRepository,
+    repo: ISegmentationResultRepository,
 ) -> None:
     await area_access_policy.check_ownership(area_id, user_id)
     await repo.delete_by_area(area_id)
@@ -87,11 +66,11 @@ async def delete_results(
 
 # --- Запросы (impure, возвращают данные) ---
 
-async def get_results(
+async def get_segmentation_results(
     area_id: UUID,
     user_id: UUID,
     area_access_policy: IAreaAccessPolicy,
-    repo: IDetectionResultRepository,
-) -> list[DetectionResult]:
+    repo: ISegmentationResultRepository,
+) -> list[SegmentationResult]:
     await area_access_policy.check_ownership(area_id, user_id)
     return await repo.find_by_area(area_id)

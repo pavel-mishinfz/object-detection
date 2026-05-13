@@ -16,7 +16,7 @@ from app.image.domain.image import ImageBounds
 
 
 _RESOLUTION = 10
-_MAX_TILE_PX = 640
+_MAX_TILE_PX = 512
 _MAX_CLOUD_COVER = 0.2
 _CDSE_COLLECTION = DataCollection.SENTINEL2_L2A.define_from(
     name="sentinel-2-l2a",
