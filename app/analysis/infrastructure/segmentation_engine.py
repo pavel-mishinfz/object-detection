@@ -35,10 +35,12 @@ class UNetSegmentationEngine(ISegmentationEngine):
             h_orig, w_orig = src.height, src.width
             arr = src.read()  # (3, H, W)
 
-        img = np.moveaxis(arr, 0, -1).astype(np.float32) / 255.0
+        img = np.moveaxis(arr, 0, -1).astype(np.float32)
         resized = cv2.resize(img, (512, 512))
+
+        img = resized.transpose(2, 0, 1).astype(np.float32)
         tensor = (
-            torch.from_numpy(resized.transpose(2, 0, 1))
+            torch.from_numpy(img)
             .unsqueeze(0)
             .to(self._device)
         )
