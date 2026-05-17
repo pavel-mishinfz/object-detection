@@ -5,18 +5,19 @@ import uuid
 
 import numpy as np
 from rasterio.io import MemoryFile
-from rasterio.transform import from_bounds
+from rasterio.windows import Window
 from sentinelhub import (
     BBox, BBoxSplitter, CRS, DataCollection,
-    MimeType, MosaickingOrder, SentinelHubRequest, SHConfig, bbox_to_dimensions,
+    MimeType, MosaickingOrder, SentinelHubDownloadClient, SentinelHubRequest, SHConfig,
+    bbox_to_dimensions,
 )
 
-from app.image.application.interfaces import ISentinelGateway, TileResult
-from app.image.domain.image import ImageBounds
+from app.image.dto import TileResult
 
 
 _RESOLUTION = 10
-_MAX_TILE_PX = 640
+_MAX_REQUEST_PX = 2500
+_TILE_PX = 640
 _MAX_CLOUD_COVER = 0.2
 _CDSE_COLLECTION = DataCollection.SENTINEL2_L2A.define_from(
     name="sentinel-2-l2a",
@@ -37,11 +38,11 @@ function evaluatePixel(sample) {
 """
 
 
-class SentinelHubGateway(ISentinelGateway):
+class SentinelHubGateway:
     def __init__(self, client_id: str, client_secret: str) -> None:
         self._config = self._make_config(client_id, client_secret)
 
-    def _make_config(self, client_id: str, client_secret: str):
+    def _make_config(self, client_id: str, client_secret: str) -> SHConfig:
         config = SHConfig()
         config.sh_client_id = client_id
         config.sh_client_secret = client_secret
@@ -51,40 +52,28 @@ class SentinelHubGateway(ISentinelGateway):
         )
         return config
 
-    def _fetch_one(
-        self,
-        tile_bbox,
-        date_start: date,
-        date_end: date
-    ) -> TileResult:
-        request = self._build_request(tile_bbox, date_start, date_end)
-        data = request.get_data()
-        tiff_bytes = self._array_to_tiff(data[0], tile_bbox)
-        bounds = ImageBounds(
-            min_lat=tile_bbox.min_y,
-            min_lon=tile_bbox.min_x,
-            max_lat=tile_bbox.max_y,
-            max_lon=tile_bbox.max_x,
-        )
-        return TileResult(
-            image_id=uuid.uuid4(),
-            tiff_bytes=tiff_bytes,
-            bounds=bounds,
-        )
-
     async def fetch_tiles(
         self,
         coordinates: tuple[tuple[float, float], ...],
         date_start: date,
         date_end: date,
     ) -> list[TileResult]:
-        bbox = self._build_bbox(coordinates)
-        bbox_list = self._split_bbox(bbox)
-        tasks = [
-            asyncio.to_thread(self._fetch_one, tile_bbox, date_start, date_end)
-            for tile_bbox in bbox_list
-        ]
-        return list(await asyncio.gather(*tasks))
+        bbox_list = self._split_bbox(self._build_bbox(coordinates))
+        requests = [self._build_request(b, date_start, date_end) for b in bbox_list]
+        download_list = [r.get_download_list()[0] for r in requests]
+
+        client = SentinelHubDownloadClient(config=self._config)
+        responses = await asyncio.to_thread(
+            client.download,
+            download_list,
+            max_threads=len(download_list),
+            decode_data=False,
+        )
+
+        results = []
+        for response in responses:
+            results.extend(self._split_into_tiles(response.content))
+        return results
 
     def _build_bbox(self, coordinates: tuple[tuple[float, float], ...]) -> BBox:
         lons = [c[0] for c in coordinates]
@@ -95,12 +84,11 @@ class SentinelHubGateway(ISentinelGateway):
             crs=CRS.WGS84,
         )
 
-    def _split_bbox(self, bbox) -> list:
-        size = bbox_to_dimensions(bbox, resolution=_RESOLUTION)
-        width, height = size
-        if width > _MAX_TILE_PX or height > _MAX_TILE_PX:
-            split_x = math.ceil(width / _MAX_TILE_PX)
-            split_y = math.ceil(height / _MAX_TILE_PX)
+    def _split_bbox(self, bbox: BBox) -> list[BBox]:
+        width, height = bbox_to_dimensions(bbox, resolution=_RESOLUTION)
+        if width > _MAX_REQUEST_PX or height > _MAX_REQUEST_PX:
+            split_x = math.ceil(width / _MAX_REQUEST_PX)
+            split_y = math.ceil(height / _MAX_REQUEST_PX)
             splitter = BBoxSplitter([bbox], CRS.WGS84, split_shape=(split_x, split_y))
             return splitter.get_bbox_list()
         return [bbox]
@@ -125,20 +113,37 @@ class SentinelHubGateway(ISentinelGateway):
             config=self._config,
         )
 
-    def _array_to_tiff(self, image_array, bbox) -> bytes:
-        arr = np.moveaxis(image_array, -1, 0)  # (H, W, 3) → (3, H, W)
-        transform = from_bounds(
-            bbox.min_x, bbox.min_y, bbox.max_x, bbox.max_y,
-            arr.shape[2], arr.shape[1],
-        )
+    def _split_into_tiles(self, tiff_bytes: bytes) -> list[TileResult]:
+        results = []
+        with MemoryFile(tiff_bytes) as memfile:
+            with memfile.open() as src:
+                for row_off in range(0, src.height, _TILE_PX):
+                    for col_off in range(0, src.width, _TILE_PX):
+                        win = Window(
+                            col_off=col_off,
+                            row_off=row_off,
+                            width=min(_TILE_PX, src.width - col_off),
+                            height=min(_TILE_PX, src.height - row_off),
+                        )
+                        data = src.read(window=win)
+                        _, h, w = data.shape
+                        if h < _TILE_PX or w < _TILE_PX:
+                            data = np.pad(data, ((0, 0), (0, _TILE_PX - h), (0, _TILE_PX - w)))
+                        results.append(TileResult(
+                            image_id=uuid.uuid4(),
+                            tiff_bytes=self._write_tiff(data, src.window_transform(win), src.crs),
+                        ))
+        return results
+
+    def _write_tiff(self, arr: np.ndarray, transform, crs) -> bytes:
         with MemoryFile() as memfile:
             with memfile.open(
                 driver="GTiff",
                 height=arr.shape[1],
                 width=arr.shape[2],
-                count=3,
+                count=arr.shape[0],
                 dtype=arr.dtype,
-                crs="EPSG:4326",
+                crs=crs,
                 transform=transform,
             ) as dataset:
                 dataset.write(arr)
