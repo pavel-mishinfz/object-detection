@@ -3,11 +3,11 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analysis.application.interfaces import ImageInfo
-from app.image.infrastructure.models import Image
+from app.shared.contracts import ImageInfo
+from app.image.models.image import Image
 
 
-class ImageReader:
+class ImageReaderAdapter:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 

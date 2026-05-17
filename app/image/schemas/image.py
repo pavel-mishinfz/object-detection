@@ -3,8 +3,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
-from app.image.application.interfaces import PreviewTile
-from app.image.domain.image import Image, ImageBounds
+from app.image.dto import PreviewTile
+from app.image.entity.image import Image
 
 
 class BoundsSchema(BaseModel):

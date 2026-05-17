@@ -3,29 +3,17 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.image.application.interfaces import IImageRepository
-from app.image.domain.image import Image
-from app.image.infrastructure.mappers import to_domain
-from app.image.infrastructure.models import Image as ImageRecord
+from app.image.entity.image import Image
+from app.image.mappers import to_domain, to_orm
+from app.image.models.image import Image as ImageRecord
 
 
-class ImageRepository(IImageRepository):
+class ImageRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def save(self, image: Image) -> None:
-        record = ImageRecord(
-            id=image.id,
-            area_id=image.area_id,
-            source=image.source,
-            path=image.path,
-            bounds_min_lat=image.bounds.min_lat,
-            bounds_min_lon=image.bounds.min_lon,
-            bounds_max_lat=image.bounds.max_lat,
-            bounds_max_lon=image.bounds.max_lon,
-            created_at=image.created_at,
-        )
-        self._session.add(record)
+        self._session.add(to_orm(image))
         await self._session.commit()
 
     async def find_by_id(self, image_id: UUID) -> Image | None:

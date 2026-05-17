@@ -7,12 +7,11 @@ from uuid import UUID
 import PIL.Image
 import rasterio
 
-from app.image.application.interfaces import IImageStorage
-from app.image.domain.image import ImageBounds
-from app.shared.errors import NotFoundError
+from app.image.entity.image import ImageBounds
+from app.shared.exceptions import NotFoundError
 
 
-class FileImageStorage(IImageStorage):
+class FileImageStorage:
     def __init__(self, temp_dir: str, images_dir: str) -> None:
         self._temp_dir = Path(temp_dir)
         self._images_dir = Path(images_dir)

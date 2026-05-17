@@ -1,6 +1,6 @@
 from datetime import date
 
-from app.image.domain.errors import InvalidDateRangeError
+from app.image.exceptions import InvalidDateRangeError
 
 
 def validate_date_range(date_start: date, date_end: date, today: date) -> None:

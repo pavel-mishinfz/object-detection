@@ -4,30 +4,16 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import Response as FastAPIResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.composition import (
-    get_area_access_policy,
-    get_area_reader,
-    get_current_user_id,
+from app.image.dependencies import (
     get_image_repository,
     get_image_storage,
     get_sentinel_gateway,
-    get_event_publisher
 )
-from app.image.application import use_cases
-from app.image.application.interfaces import (
-    IAreaAccessPolicy,
-    IAreaReader,
-    IImageRepository,
-    IImageStorage,
-    ISentinelGateway,
-    IEventPublisher
-)
-from app.image.domain.errors import (
-    ImageNotFoundError,
-    InvalidDateRangeError,
-    NoPreviewAvailableError,
-)
-from app.image.presentation.schemas import (
+from app.image.exceptions import ImageNotFoundError, InvalidDateRangeError, NoPreviewAvailableError
+from app.image.infrastructure.image_storage import FileImageStorage
+from app.image.infrastructure.repository import ImageRepository
+from app.image.infrastructure.sentinel_gateway import SentinelHubGateway
+from app.image.schemas.image import (
     FetchPreviewRequest,
     ImageResponse,
     PreviewTileResponse,
@@ -35,8 +21,13 @@ from app.image.presentation.schemas import (
     to_image_response,
     to_preview_response,
 )
-from app.shared.db import get_session
-from app.shared.errors import AccessDeniedError, NotFoundError
+from app.image.services import image_service
+from app.map.dependencies import get_area_access_policy, get_area_reader
+from app.shared.contracts import IAreaAccessPolicy, IAreaReader, IEventPublisher
+from app.shared.database import get_session
+from app.shared.dependencies import get_event_publisher
+from app.shared.exceptions import AccessDeniedError, NotFoundError
+from app.user.infrastructure.auth_backend import get_current_user_id
 
 router = APIRouter(prefix="/images", tags=["images"])
 
@@ -47,17 +38,17 @@ async def preview_images(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     area_access_policy: IAreaAccessPolicy = Depends(get_area_access_policy),
     area_reader: IAreaReader = Depends(get_area_reader),
-    gateway: ISentinelGateway = Depends(get_sentinel_gateway),
-    storage: IImageStorage = Depends(get_image_storage),
+    gateway: SentinelHubGateway = Depends(get_sentinel_gateway),
+    storage: FileImageStorage = Depends(get_image_storage),
 ) -> list[PreviewTileResponse]:
     try:
-        await use_cases.delete_previews(
+        await image_service.delete_previews(
             area_id=payload.area_id,
             user_id=current_user_id,
             area_access_policy=area_access_policy,
-            storage=storage
+            storage=storage,
         )
-        await use_cases.fetch_previews(
+        await image_service.fetch_previews(
             area_id=payload.area_id,
             user_id=current_user_id,
             date_start=payload.date_start,
@@ -67,7 +58,7 @@ async def preview_images(
             gateway=gateway,
             storage=storage,
         )
-        tiles = await use_cases.get_preview_tiles(
+        tiles = await image_service.get_preview_tiles(
             area_id=payload.area_id,
             user_id=current_user_id,
             area_access_policy=area_access_policy,
@@ -87,18 +78,18 @@ async def save_images(
     payload: SaveImagesRequest,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     area_access_policy: IAreaAccessPolicy = Depends(get_area_access_policy),
-    repo: IImageRepository = Depends(get_image_repository),
-    storage: IImageStorage = Depends(get_image_storage),
+    repo: ImageRepository = Depends(get_image_repository),
+    storage: FileImageStorage = Depends(get_image_storage),
 ) -> list[ImageResponse]:
     try:
-        await use_cases.save_images(
+        await image_service.save_images(
             area_id=payload.area_id,
             user_id=current_user_id,
             area_access_policy=area_access_policy,
             repo=repo,
             storage=storage,
         )
-        images = await use_cases.get_images(
+        images = await image_service.get_images(
             area_id=payload.area_id,
             user_id=current_user_id,
             area_access_policy=area_access_policy,
@@ -118,10 +109,10 @@ async def get_images(
     area_id: uuid.UUID,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     area_access_policy: IAreaAccessPolicy = Depends(get_area_access_policy),
-    repo: IImageRepository = Depends(get_image_repository),
+    repo: ImageRepository = Depends(get_image_repository),
 ) -> list[ImageResponse]:
     try:
-        images = await use_cases.get_images(
+        images = await image_service.get_images(
             area_id=area_id,
             user_id=current_user_id,
             area_access_policy=area_access_policy,
@@ -139,11 +130,11 @@ async def get_image_png(
     image_id: uuid.UUID,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     area_access_policy: IAreaAccessPolicy = Depends(get_area_access_policy),
-    repo: IImageRepository = Depends(get_image_repository),
-    storage: IImageStorage = Depends(get_image_storage),
+    repo: ImageRepository = Depends(get_image_repository),
+    storage: FileImageStorage = Depends(get_image_storage),
 ) -> FastAPIResponse:
     try:
-        png_bytes = await use_cases.get_image_as_png(
+        png_bytes = await image_service.get_image_as_png(
             image_id=image_id,
             user_id=current_user_id,
             repo=repo,
@@ -151,7 +142,7 @@ async def get_image_png(
             storage=storage,
         )
         return FastAPIResponse(content=png_bytes, media_type="image/png")
-    except ImageNotFoundError as e:
+    except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -162,19 +153,19 @@ async def delete_images(
     area_id: uuid.UUID,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     area_access_policy: IAreaAccessPolicy = Depends(get_area_access_policy),
-    repo: IImageRepository = Depends(get_image_repository),
-    storage: IImageStorage = Depends(get_image_storage),
+    repo: ImageRepository = Depends(get_image_repository),
+    storage: FileImageStorage = Depends(get_image_storage),
     publisher: IEventPublisher = Depends(get_event_publisher),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     try:
-        await use_cases.delete_images(
+        await image_service.delete_images(
             area_id=area_id,
             user_id=current_user_id,
             area_access_policy=area_access_policy,
             repo=repo,
             storage=storage,
-            publisher=publisher
+            publisher=publisher,
         )
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

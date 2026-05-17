@@ -1,42 +1,18 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from app.image.domain.errors import (
-    ImageNotFoundError,
-    NoPreviewAvailableError,
-)
-from app.image.domain.image import Image, ImageBounds
-from app.image.application.interfaces import (
-    IAreaAccessPolicy,
-    IAreaReader,
-    IEventPublisher,
-    IImageRepository,
-    IImageStorage,
-    ISentinelGateway,
-    PreviewTile,
-)
-from app.image.domain.validators import validate_date_range
+from app.image.dto import PreviewTile
+from app.image.entity.image import Image
+from app.image.exceptions import ImageNotFoundError, NoPreviewAvailableError
+from app.image.infrastructure.image_storage import FileImageStorage
+from app.image.infrastructure.repository import ImageRepository
+from app.image.infrastructure.sentinel_gateway import SentinelHubGateway
+from app.image.services.validators import validate_date_range
+from app.shared.contracts import IAreaAccessPolicy, IAreaReader, IEventPublisher
 from app.shared.events import ImagesDeleted
 
 
-def build_image(
-    image_id: UUID,
-    area_id: UUID,
-    path: str,
-    bounds: ImageBounds,
-    created_at: datetime,
-) -> Image:
-    return Image(
-        id=image_id,
-        area_id=area_id,
-        source="SENTINEL2_L2A",
-        path=path,
-        bounds=bounds,
-        created_at=created_at,
-    )
-
-
-# --- Команды (impure, -> None) ---
+# --- Impure functions (commands) ---
 
 async def fetch_previews(
     area_id: UUID,
@@ -45,8 +21,8 @@ async def fetch_previews(
     date_end: date,
     area_access_policy: IAreaAccessPolicy,
     area_reader: IAreaReader,
-    gateway: ISentinelGateway,
-    storage: IImageStorage,
+    gateway: SentinelHubGateway,
+    storage: FileImageStorage,
 ) -> None:
     validate_date_range(date_start, date_end, date.today())
     await area_access_policy.check_ownership(area_id, user_id)
@@ -62,7 +38,7 @@ async def delete_previews(
     area_id: UUID,
     user_id: UUID,
     area_access_policy: IAreaAccessPolicy,
-    storage: IImageStorage,
+    storage: FileImageStorage,
 ) -> None:
     await area_access_policy.check_ownership(area_id, user_id)
 
@@ -76,8 +52,8 @@ async def save_images(
     area_id: UUID,
     user_id: UUID,
     area_access_policy: IAreaAccessPolicy,
-    repo: IImageRepository,
-    storage: IImageStorage,
+    repo: ImageRepository,
+    storage: FileImageStorage,
 ) -> None:
     await area_access_policy.check_ownership(area_id, user_id)
 
@@ -91,9 +67,10 @@ async def save_images(
     for image_id in image_ids:
         bounds = await storage.get_temp_bounds(image_id)
         path = await storage.promote_to_permanent(image_id)
-        image = build_image(
-            image_id=image_id,
+        image = Image(
+            id=image_id,
             area_id=area_id,
+            source="SENTINEL2_L2A",
             path=path,
             bounds=bounds,
             created_at=now,
@@ -105,9 +82,9 @@ async def delete_images(
     area_id: UUID,
     user_id: UUID,
     area_access_policy: IAreaAccessPolicy,
-    repo: IImageRepository,
-    storage: IImageStorage,
-    publisher: IEventPublisher
+    repo: ImageRepository,
+    storage: FileImageStorage,
+    publisher: IEventPublisher,
 ) -> None:
     await area_access_policy.check_ownership(area_id, user_id)
     images = await repo.find_by_area(area_id)
@@ -117,30 +94,31 @@ async def delete_images(
         await storage.delete(image.path)
 
 
-# --- Запросы (impure, возвращают данные) ---
+# --- Impure functions (queries) ---
 
 async def get_preview_tiles(
     area_id: UUID,
     user_id: UUID,
     area_access_policy: IAreaAccessPolicy,
-    storage: IImageStorage,
+    storage: FileImageStorage,
 ) -> list[PreviewTile]:
     await area_access_policy.check_ownership(area_id, user_id)
-    
+
     tiles: list[PreviewTile] = []
     image_ids = await storage.list_temp_by_area(area_id)
-    
+
     for image_id in image_ids:
         bounds = await storage.get_temp_bounds(image_id)
         tiles.append(PreviewTile(image_id, bounds))
-    
+
     return tiles
+
 
 async def get_images(
     area_id: UUID,
     user_id: UUID,
     area_access_policy: IAreaAccessPolicy,
-    repo: IImageRepository,
+    repo: ImageRepository,
 ) -> list[Image]:
     await area_access_policy.check_ownership(area_id, user_id)
     return await repo.find_by_area(area_id)
@@ -149,9 +127,9 @@ async def get_images(
 async def get_image_as_png(
     image_id: UUID,
     user_id: UUID,
-    repo: IImageRepository,
+    repo: ImageRepository,
     area_access_policy: IAreaAccessPolicy,
-    storage: IImageStorage,
+    storage: FileImageStorage,
 ) -> bytes:
     image = await repo.find_by_id(image_id)
     if image is not None:
