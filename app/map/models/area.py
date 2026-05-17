@@ -4,7 +4,7 @@ from geoalchemy2 import Geometry
 from sqlalchemy import Column, DateTime, String, UUID, UniqueConstraint
 from sqlalchemy.sql import func
 
-from app.shared.db import Base
+from app.shared.database import Base
 
 
 class Area(Base):

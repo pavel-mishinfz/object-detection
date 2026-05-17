@@ -1,15 +1,14 @@
 import uuid
 from datetime import datetime
-from typing import List, Tuple
 
 from pydantic import BaseModel
 
-from app.map.domain.polygon import Polygon
+from app.map.entity.polygon import Polygon
 
 
 class GeoJSONPolygon(BaseModel):
     type: str = 'Polygon'
-    coordinates: List[List[Tuple[float, float]]]
+    coordinates: list[list[tuple[float, float]]]
 
 
 class PolygonRequestBase(BaseModel):

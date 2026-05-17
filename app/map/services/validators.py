@@ -1,8 +1,8 @@
 from pyproj import Geod
 from shapely.geometry import Polygon as ShapelyPolygon
 
-from app.map.domain.polygon import Coordinate
-from app.map.domain.errors import PolygonValidationError
+from app.map.exceptions import PolygonValidationError
+from app.map.entity.polygon import Coordinate
 
 _GEOD = Geod(ellps="WGS84")
 
@@ -13,7 +13,7 @@ def validate_closed(coords: tuple[Coordinate, ...]) -> None:
 
 
 def validate_min_unique_coordinates(coords: tuple[Coordinate, ...]) -> None:
-    unique = set(coords[:-1]) if coords and coords[0] == coords[-1] else set(coords)
+    unique = set(coords)
     if len(unique) < 3:
         raise PolygonValidationError(
             "Полигон должен иметь не менее 3 уникальных координат"
@@ -58,8 +58,8 @@ def validate_name(name: str) -> None:
 
 
 def validate_polygon_geometry(coords: tuple[Coordinate, ...]) -> None:
-    validate_min_unique_coordinates(coords)
     validate_closed(coords)
+    validate_min_unique_coordinates(coords)
     validate_geographic_bounds(coords)
     validate_no_self_intersections(coords)
     validate_area(coords)

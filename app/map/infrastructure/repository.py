@@ -3,26 +3,18 @@ from uuid import UUID
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.map.application.interfaces import IPolygonRepository
-from app.map.domain.polygon import Polygon
-from app.map.infrastructure.mappers import coords_to_wkb, to_domain
-from app.map.infrastructure.models import Area
+from app.map.entity.polygon import Polygon
+from app.map.mappers import to_domain, to_orm
+from app.map.models.area import Area
 
 
-class PolygonRepository(IPolygonRepository):
+class AreaRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def save(self, polygon: Polygon) -> None:
-        record = Area(
-            id=polygon.id,
-            user_id=polygon.user_id,
-            name=polygon.name,
-            geometry=coords_to_wkb(polygon.coordinates),
-            created_at=polygon.created_at,
-        )
-        self._session.add(record)
-        await self._session.commit()
+    async def add(self, polygon: Polygon) -> None:
+        self._session.add(to_orm(polygon))
+        await self._session.flush()
 
     async def find_by_id(self, polygon_id: UUID) -> Polygon | None:
         result = await self._session.execute(
@@ -40,15 +32,13 @@ class PolygonRepository(IPolygonRepository):
         return [to_domain(r) for r in result.scalars().all()]
 
     async def update(self, polygon: Polygon) -> None:
+        orm = to_orm(polygon)
         await self._session.execute(
             update(Area)
             .where(Area.id == polygon.id)
-            .values(
-                name=polygon.name,
-                geometry=coords_to_wkb(polygon.coordinates),
-            )
+            .values(name=orm.name, geometry=orm.geometry)
         )
-        await self._session.commit()
+        await self._session.flush()
 
     async def delete(self, polygon_id: UUID) -> None:
         await self._session.execute(

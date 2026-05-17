@@ -1,4 +1,4 @@
-from app.shared.errors import AccessDeniedError, NotFoundError
+from app.shared.exceptions import AccessDeniedError, NotFoundError
 
 
 class DomainError(Exception):

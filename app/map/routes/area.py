@@ -3,21 +3,19 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.composition import (
-    get_current_user_id,
-    get_event_publisher,
-    get_polygon_repository,
-)
-from app.map.application import use_cases
-from app.map.application.interfaces import IEventPublisher, IPolygonRepository
-from app.map.domain.errors import (
+from app.shared.contracts import IEventPublisher
+from app.shared.database import get_session
+from app.shared.dependencies import get_event_publisher
+from app.map.dependencies import get_area_repository
+from app.map.exceptions import (
     PolygonAccessDeniedError,
     PolygonLimitExceededError,
     PolygonNameConflictError,
     PolygonNotFoundError,
     PolygonValidationError,
 )
-from app.map.presentation.schemas import (
+from app.map.infrastructure.repository import AreaRepository
+from app.map.schemas.area import (
     CreatePolygonRequest,
     PolygonResponse,
     PolygonSummaryResponse,
@@ -25,7 +23,8 @@ from app.map.presentation.schemas import (
     to_response,
     to_summary_response,
 )
-from app.shared.db import get_session
+from app.map.services import area_service
+from app.user.infrastructure.auth_backend import get_current_user_id
 
 router = APIRouter(prefix="/areas", tags=["areas"])
 
@@ -34,16 +33,18 @@ router = APIRouter(prefix="/areas", tags=["areas"])
 async def create_area(
     payload: CreatePolygonRequest,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
-    repo: IPolygonRepository = Depends(get_polygon_repository),
+    repo: AreaRepository = Depends(get_area_repository),
+    session: AsyncSession = Depends(get_session),
 ) -> PolygonResponse:
     polygon_id = uuid.uuid4()
     try:
-        await use_cases.create_polygon(
+        await area_service.create_polygon(
             polygon_id=polygon_id,
             user_id=current_user_id,
             name=payload.name,
             coordinates=tuple(tuple(p) for p in payload.geometry.coordinates[0]),
-            repo=repo,
+            crud=repo,
+            session=session,
         )
     except PolygonValidationError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -51,19 +52,21 @@ async def create_area(
         raise HTTPException(status_code=409, detail=str(e))
     except PolygonLimitExceededError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    return to_response(await use_cases.get_polygon(
+    return to_response(await area_service.get_polygon(
         polygon_id=polygon_id,
         user_id=current_user_id,
-        repo=repo,
+        crud=repo,
     ))
 
 
 @router.get("", response_model=list[PolygonSummaryResponse])
 async def get_user_areas(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
-    repo: IPolygonRepository = Depends(get_polygon_repository),
+    repo: AreaRepository = Depends(get_area_repository),
 ) -> list[PolygonSummaryResponse]:
-    polygons = await use_cases.get_user_polygons(user_id=current_user_id, repo=repo)
+    polygons = await area_service.get_user_polygons(
+        user_id=current_user_id, crud=repo
+    )
     return [to_summary_response(p) for p in polygons]
 
 
@@ -71,13 +74,13 @@ async def get_user_areas(
 async def get_area(
     polygon_id: uuid.UUID,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
-    repo: IPolygonRepository = Depends(get_polygon_repository),
+    repo: AreaRepository = Depends(get_area_repository),
 ) -> PolygonResponse:
     try:
-        return to_response(await use_cases.get_polygon(
+        return to_response(await area_service.get_polygon(
             polygon_id=polygon_id,
             user_id=current_user_id,
-            repo=repo,
+            crud=repo,
         ))
     except PolygonNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -90,15 +93,17 @@ async def update_area(
     polygon_id: uuid.UUID,
     payload: UpdatePolygonRequest,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
-    repo: IPolygonRepository = Depends(get_polygon_repository),
+    repo: AreaRepository = Depends(get_area_repository),
+    session: AsyncSession = Depends(get_session),
 ) -> PolygonResponse:
     try:
-        await use_cases.update_polygon(
+        await area_service.update_polygon(
             polygon_id=polygon_id,
             user_id=current_user_id,
             name=payload.name,
             coordinates=tuple(tuple(p) for p in payload.geometry.coordinates[0]),
-            repo=repo,
+            crud=repo,
+            session=session,
         )
     except PolygonValidationError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -108,10 +113,10 @@ async def update_area(
         raise HTTPException(status_code=403, detail=str(e))
     except PolygonNameConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    return to_response(await use_cases.get_polygon(
+    return to_response(await area_service.get_polygon(
         polygon_id=polygon_id,
         user_id=current_user_id,
-        repo=repo,
+        crud=repo,
     ))
 
 
@@ -119,21 +124,20 @@ async def update_area(
 async def delete_area(
     polygon_id: uuid.UUID,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
-    repo: IPolygonRepository = Depends(get_polygon_repository),
+    repo: AreaRepository = Depends(get_area_repository),
     publisher: IEventPublisher = Depends(get_event_publisher),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     try:
-        await use_cases.delete_polygon(
+        await area_service.delete_polygon(
             polygon_id=polygon_id,
             user_id=current_user_id,
-            repo=repo,
+            crud=repo,
             publisher=publisher,
+            session=session,
         )
     except PolygonNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except PolygonAccessDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e))
-    await session.commit()
-    await publisher.run_post_commit()
     return Response(status_code=204)
