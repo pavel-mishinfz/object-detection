@@ -5,7 +5,7 @@ from sqlalchemy import Column, DateTime, Double, ForeignKey, Integer, String, UU
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-from app.shared.db import Base
+from app.shared.database import Base
 
 
 class ObjectType(Base):

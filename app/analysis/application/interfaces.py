@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Protocol
 from uuid import UUID
 
 from app.analysis.domain.detection_result import DetectionResult, ObjectType
+from app.shared.contracts import IAreaAccessPolicy, ImageInfo, IImageReader  # noqa: F401  (re-export)
 
 
 @dataclass(frozen=True)
@@ -11,20 +11,6 @@ class RawDetection:
     geo_polygon: tuple[tuple[float, float], ...]  # (lon, lat), closed ring
     score: float
     object_type_id: int
-
-
-@dataclass(frozen=True)
-class ImageInfo:
-    id: UUID
-    path: str
-
-
-class IAreaAccessPolicy(Protocol):
-    async def check_ownership(self, area_id: UUID, user_id: UUID) -> None: ...
-
-
-class IImageReader(Protocol):
-    async def get_images_for_area(self, area_id: UUID) -> list[ImageInfo]: ...
 
 
 class IDetectionResultRepository(ABC):

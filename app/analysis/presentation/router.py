@@ -24,7 +24,7 @@ from app.composition import (
     get_image_reader,
     get_object_type_repository,
 )
-from app.shared.errors import AccessDeniedError, NotFoundError
+from app.shared.exceptions import AccessDeniedError, NotFoundError
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 

@@ -2,7 +2,7 @@ from fastapi_users.db import SQLAlchemyBaseUserTableUUID
 from sqlalchemy import Column, ForeignKey, Integer, String
 from sqlalchemy.orm import mapped_column, relationship
 
-from app.shared.db import Base
+from app.shared.database import Base
 
 
 class Group(Base):
