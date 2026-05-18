@@ -1,0 +1,6 @@
+p, r.sub.id == r.obj.owner_id, /areas/*, GET
+p, r.sub.id == r.obj.owner_id, /areas/*, PUT
+p, r.sub.id == r.obj.owner_id, /areas/*, DELETE
+p, r.sub.group_id == 1, /areas/*, GET
+p, r.sub.group_id == 1, /areas/*, PUT
+p, r.sub.group_id == 1, /areas/*, DELETE

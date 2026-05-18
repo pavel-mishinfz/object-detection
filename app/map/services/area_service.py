@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.shared.contracts import IEventPublisher
 from app.shared.events import AreaDeleted
 from app.map.exceptions import (
-    PolygonAccessDeniedError,
     PolygonLimitExceededError,
     PolygonNameConflictError,
     PolygonNotFoundError,
@@ -96,9 +95,7 @@ async def update_polygon(
     session: AsyncSession,
 ) -> None:
     existing = await _get_polygon(polygon_id, repo)
-    await _check_access(existing.user_id, user_id)
     await _check_name_exists(user_id, name, repo, polygon_id)
-
     updated = build_updated_polygon(existing, name, coordinates)
     await repo.update(updated)
     await session.commit()
@@ -106,14 +103,10 @@ async def update_polygon(
 
 async def delete_polygon(
     polygon_id: UUID,
-    user_id: UUID,
     repo: AreaRepository,
     publisher: IEventPublisher,
     session: AsyncSession,
 ) -> None:
-    existing = await _get_polygon(polygon_id, repo)
-    await _check_access(existing.user_id, user_id)
-
     await repo.delete(polygon_id)
     await publisher.publish(AreaDeleted(area_id=polygon_id))
     await session.commit()
@@ -122,14 +115,8 @@ async def delete_polygon(
 
 # --- Impure functions (queries) ---
 
-async def get_polygon(
-    polygon_id: UUID,
-    user_id: UUID,
-    repo: AreaRepository,
-) -> Polygon:
-    polygon = await _get_polygon(polygon_id, repo)
-    await _check_access(polygon.user_id, user_id)
-    return polygon
+async def get_polygon(polygon_id: UUID, repo: AreaRepository) -> Polygon:
+    return await _get_polygon(polygon_id, repo)
 
 
 async def get_user_polygons(
@@ -151,8 +138,3 @@ async def _check_name_exists(
 ) -> None:
     if await repo.exists_with_name(user_id, name, polygon_id):
         raise PolygonNameConflictError(f"Полигон с именем '{name}' уже существует")
-
-
-async def _check_access(user_id: UUID, current_user_id: UUID) -> None:
-    if user_id != current_user_id:
-        raise PolygonAccessDeniedError("Нет доступа к данному полигону")

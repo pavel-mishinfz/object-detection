@@ -13,6 +13,8 @@ from app.analysis.services.event_handlers import (
 )
 from app.config import load_config
 from app.image.dependencies import create_image_storage
+from app.user.authorization.enforcer import create_enforcer
+from app.user.authorization.middleware import AreaOwnershipMiddleware
 from app.image.services.event_handlers import make_on_area_deleted as make_image_on_area_deleted
 from app.image.routes.image import router as image_router
 from app.shared.database import get_session, init_db
@@ -49,6 +51,7 @@ async def _seed_object_types() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.enforcer = create_enforcer()
     bus = EventBus()
     app.state.event_bus = bus
     await init_db()
@@ -62,6 +65,7 @@ async def lifespan(app: FastAPI):
 
 
 application = FastAPI(title="Object Detection", lifespan=lifespan)
+application.add_middleware(AreaOwnershipMiddleware)
 
 application.add_middleware(
     CORSMiddleware,

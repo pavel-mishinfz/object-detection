@@ -1,6 +1,7 @@
 import uuid
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.contracts import IEventPublisher
@@ -8,7 +9,6 @@ from app.shared.database import get_session
 from app.shared.dependencies import get_event_publisher
 from app.map.dependencies import get_area_repository
 from app.map.exceptions import (
-    PolygonAccessDeniedError,
     PolygonLimitExceededError,
     PolygonNameConflictError,
     PolygonNotFoundError,
@@ -52,11 +52,7 @@ async def create_area(
         raise HTTPException(status_code=409, detail=str(e))
     except PolygonLimitExceededError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    return to_response(await area_service.get_polygon(
-        polygon_id=polygon_id,
-        user_id=current_user_id,
-        repo=repo,
-    ))
+    return to_response(await area_service.get_polygon(polygon_id, repo))
 
 
 @router.get("", response_model=list[PolygonSummaryResponse])
@@ -73,29 +69,21 @@ async def get_user_areas(
 @router.get("/{polygon_id}", response_model=PolygonResponse)
 async def get_area(
     polygon_id: uuid.UUID,
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
     repo: AreaRepository = Depends(get_area_repository),
 ) -> PolygonResponse:
-    try:
-        return to_response(await area_service.get_polygon(
-            polygon_id=polygon_id,
-            user_id=current_user_id,
-            repo=repo,
-        ))
-    except PolygonNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except PolygonAccessDeniedError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+    polygon = await repo.find_by_id(polygon_id)
+    return to_response(polygon)
 
 
 @router.put("/{polygon_id}", response_model=PolygonResponse)
 async def update_area(
     polygon_id: uuid.UUID,
     payload: UpdatePolygonRequest,
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
+    request: Request,
     repo: AreaRepository = Depends(get_area_repository),
     session: AsyncSession = Depends(get_session),
 ) -> PolygonResponse:
+    current_user_id: UUID = request.state.current_user_id
     try:
         await area_service.update_polygon(
             polygon_id=polygon_id,
@@ -109,35 +97,22 @@ async def update_area(
         raise HTTPException(status_code=422, detail=str(e))
     except PolygonNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except PolygonAccessDeniedError as e:
-        raise HTTPException(status_code=403, detail=str(e))
     except PolygonNameConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    return to_response(await area_service.get_polygon(
-        polygon_id=polygon_id,
-        user_id=current_user_id,
-        repo=repo,
-    ))
+    return to_response(await area_service.get_polygon(polygon_id, repo))
 
 
 @router.delete("/{polygon_id}", status_code=204)
 async def delete_area(
     polygon_id: uuid.UUID,
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
     repo: AreaRepository = Depends(get_area_repository),
     publisher: IEventPublisher = Depends(get_event_publisher),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    try:
-        await area_service.delete_polygon(
-            polygon_id=polygon_id,
-            user_id=current_user_id,
-            crud=repo,
-            publisher=publisher,
-            session=session,
-        )
-    except PolygonNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except PolygonAccessDeniedError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+    await area_service.delete_polygon(
+        polygon_id=polygon_id,
+        repo=repo,
+        publisher=publisher,
+        session=session,
+    )
     return Response(status_code=204)

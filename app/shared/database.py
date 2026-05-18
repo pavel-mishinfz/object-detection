@@ -12,11 +12,11 @@ class Base(DeclarativeBase):
 
 _cfg = load_config()
 _engine = create_async_engine(_cfg.postgres_dsn_async.unicode_string(), echo=False)
-_session_factory = async_sessionmaker(_engine, expire_on_commit=False)
+session_factory = async_sessionmaker(_engine, expire_on_commit=False)
 
 
 async def get_session() -> AsyncGenerator[AsyncSession]:
-    async with _session_factory() as session:
+    async with session_factory() as session:
         yield session
 
 
