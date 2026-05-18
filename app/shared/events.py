@@ -8,5 +8,5 @@ class AreaDeleted:
 
 
 @dataclass(frozen=True)
-class ImagesDeleted:
-    image_ids: list[UUID]
+class ImagesByAreaDeleted:
+    area_id: UUID

@@ -43,7 +43,7 @@ async def create_area(
             user_id=current_user_id,
             name=payload.name,
             coordinates=tuple(tuple(p) for p in payload.geometry.coordinates[0]),
-            crud=repo,
+            repo=repo,
             session=session,
         )
     except PolygonValidationError as e:
@@ -55,7 +55,7 @@ async def create_area(
     return to_response(await area_service.get_polygon(
         polygon_id=polygon_id,
         user_id=current_user_id,
-        crud=repo,
+        repo=repo,
     ))
 
 
@@ -65,7 +65,7 @@ async def get_user_areas(
     repo: AreaRepository = Depends(get_area_repository),
 ) -> list[PolygonSummaryResponse]:
     polygons = await area_service.get_user_polygons(
-        user_id=current_user_id, crud=repo
+        user_id=current_user_id, repo=repo
     )
     return [to_summary_response(p) for p in polygons]
 
@@ -80,7 +80,7 @@ async def get_area(
         return to_response(await area_service.get_polygon(
             polygon_id=polygon_id,
             user_id=current_user_id,
-            crud=repo,
+            repo=repo,
         ))
     except PolygonNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -102,7 +102,7 @@ async def update_area(
             user_id=current_user_id,
             name=payload.name,
             coordinates=tuple(tuple(p) for p in payload.geometry.coordinates[0]),
-            crud=repo,
+            repo=repo,
             session=session,
         )
     except PolygonValidationError as e:
@@ -116,7 +116,7 @@ async def update_area(
     return to_response(await area_service.get_polygon(
         polygon_id=polygon_id,
         user_id=current_user_id,
-        crud=repo,
+        repo=repo,
     ))
 
 

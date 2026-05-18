@@ -65,16 +65,16 @@ async def create_polygon(
     user_id: UUID,
     name: str,
     coordinates: tuple[tuple[float, float], ...],
-    crud: AreaRepository,
+    repo: AreaRepository,
     session: AsyncSession,
 ) -> None:
-    count = await crud.count_by_user(user_id)
+    count = await repo.count_by_user(user_id)
     if count >= 100:
         raise PolygonLimitExceededError(
             "Достигнут лимит полигонов для пользователя (100)"
         )
 
-    await _check_name_exists(user_id, name, crud)
+    await _check_name_exists(user_id, name, repo)
 
     polygon = build_polygon(
         polygon_id=polygon_id,
@@ -83,7 +83,7 @@ async def create_polygon(
         coordinates=coordinates,
         created_at=datetime.now(),
     )
-    await crud.add(polygon)
+    await repo.add(polygon)
     await session.commit()
 
 
@@ -92,29 +92,29 @@ async def update_polygon(
     user_id: UUID,
     name: str,
     coordinates: tuple[tuple[float, float], ...],
-    crud: AreaRepository,
+    repo: AreaRepository,
     session: AsyncSession,
 ) -> None:
-    existing = await _get_polygon(polygon_id, crud)
+    existing = await _get_polygon(polygon_id, repo)
     await _check_access(existing.user_id, user_id)
-    await _check_name_exists(user_id, name, crud, polygon_id)
+    await _check_name_exists(user_id, name, repo, polygon_id)
 
     updated = build_updated_polygon(existing, name, coordinates)
-    await crud.update(updated)
+    await repo.update(updated)
     await session.commit()
 
 
 async def delete_polygon(
     polygon_id: UUID,
     user_id: UUID,
-    crud: AreaRepository,
+    repo: AreaRepository,
     publisher: IEventPublisher,
     session: AsyncSession,
 ) -> None:
-    existing = await _get_polygon(polygon_id, crud)
+    existing = await _get_polygon(polygon_id, repo)
     await _check_access(existing.user_id, user_id)
 
-    await crud.delete(polygon_id)
+    await repo.delete(polygon_id)
     await publisher.publish(AreaDeleted(area_id=polygon_id))
     await session.commit()
     await publisher.run_post_commit()
@@ -125,31 +125,31 @@ async def delete_polygon(
 async def get_polygon(
     polygon_id: UUID,
     user_id: UUID,
-    crud: AreaRepository,
+    repo: AreaRepository,
 ) -> Polygon:
-    polygon = await _get_polygon(polygon_id, crud)
+    polygon = await _get_polygon(polygon_id, repo)
     await _check_access(polygon.user_id, user_id)
     return polygon
 
 
 async def get_user_polygons(
     user_id: UUID,
-    crud: AreaRepository,
+    repo: AreaRepository,
 ) -> list[Polygon]:
-    return await crud.find_by_user(user_id)
+    return await repo.find_by_user(user_id)
 
 
-async def _get_polygon(polygon_id: UUID, crud: AreaRepository) -> Polygon:
-    polygon = await crud.find_by_id(polygon_id)
+async def _get_polygon(polygon_id: UUID, repo: AreaRepository) -> Polygon:
+    polygon = await repo.find_by_id(polygon_id)
     if polygon is None:
         raise PolygonNotFoundError(f"Полигон {polygon_id} не найден")
     return polygon
 
 
 async def _check_name_exists(
-    user_id: UUID, name: str, crud: AreaRepository, polygon_id: UUID | None = None
+    user_id: UUID, name: str, repo: AreaRepository, polygon_id: UUID | None = None
 ) -> None:
-    if await crud.exists_with_name(user_id, name, polygon_id):
+    if await repo.exists_with_name(user_id, name, polygon_id):
         raise PolygonNameConflictError(f"Полигон с именем '{name}' уже существует")
 
 
