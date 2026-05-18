@@ -2,8 +2,9 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Config, load_config
-from app.image.infrastructure.image_storage import FileImageStorage
+from app.image.infrastructure.image_storage import LocalImageStorage
 from app.image.infrastructure.repository import ImageRepository
+from app.image.infrastructure.image_cache import RedisImageCache
 from app.image.infrastructure.sentinel_gateway import SentinelHubGateway
 from app.shared.database import get_session
 
@@ -16,10 +17,20 @@ def get_image_repository(
 
 def get_image_storage(
     cfg: Config = Depends(load_config)
-) -> FileImageStorage:
-    return FileImageStorage(
+) -> LocalImageStorage:
+    return LocalImageStorage(
         temp_dir=cfg.sentinel_temp_dir,
         images_dir=cfg.sentinel_images_dir,
+    )
+
+
+def get_redis_cache(
+    cfg: Config = Depends(load_config)
+) -> RedisImageCache:
+    return RedisImageCache(
+        host=cfg.redis_host,
+        port=cfg.redis_port,
+        db=cfg.redis_db
     )
 
 

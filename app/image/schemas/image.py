@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
-from app.image.dto import PreviewTile
+from app.image.dto import TilePreview
 from app.image.entity.image import Image
 
 
@@ -38,7 +38,7 @@ class ImageResponse(BaseModel):
     created_at: datetime
 
 
-def to_preview_response(tile: PreviewTile) -> PreviewTileResponse:
+def to_preview_response(tile: TilePreview) -> PreviewTileResponse:
     return PreviewTileResponse(
         image_id=tile.image_id,
         preview_url=f"/images/{tile.image_id}/png",

@@ -7,11 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.image.dependencies import (
     get_image_repository,
     get_image_storage,
+    get_redis_cache,
     get_sentinel_gateway,
 )
-from app.image.exceptions import ImageNotFoundError, InvalidDateRangeError, NoPreviewAvailableError
-from app.image.infrastructure.image_storage import FileImageStorage
+from app.image.exceptions import InvalidDateRangeError, NoPreviewAvailableError
+from app.image.infrastructure.image_storage import LocalImageStorage
 from app.image.infrastructure.repository import ImageRepository
+from app.image.infrastructure.image_cache import RedisImageCache
 from app.image.infrastructure.sentinel_gateway import SentinelHubGateway
 from app.image.schemas.image import (
     FetchPreviewRequest,
@@ -38,16 +40,11 @@ async def preview_images(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     area_access_policy: IAreaAccessPolicy = Depends(get_area_access_policy),
     area_reader: IAreaReader = Depends(get_area_reader),
-    gateway: SentinelHubGateway = Depends(get_sentinel_gateway),
-    storage: FileImageStorage = Depends(get_image_storage),
+    sentinel_gateway: SentinelHubGateway = Depends(get_sentinel_gateway),
+    local_storage: LocalImageStorage = Depends(get_image_storage),
+    redis_cache: RedisImageCache = Depends(get_redis_cache)
 ) -> list[PreviewTileResponse]:
     try:
-        await image_service.delete_previews(
-            area_id=payload.area_id,
-            user_id=current_user_id,
-            area_access_policy=area_access_policy,
-            storage=storage,
-        )
         await image_service.fetch_previews(
             area_id=payload.area_id,
             user_id=current_user_id,
@@ -55,22 +52,23 @@ async def preview_images(
             date_end=payload.date_end,
             area_access_policy=area_access_policy,
             area_reader=area_reader,
-            gateway=gateway,
-            storage=storage,
+            sentinel_gateway=sentinel_gateway,
+            storage=local_storage,
+            cache=redis_cache,
         )
         tiles = await image_service.get_preview_tiles(
             area_id=payload.area_id,
             user_id=current_user_id,
             area_access_policy=area_access_policy,
-            storage=storage,
+            cache=redis_cache,
         )
-        return [to_preview_response(t) for t in tiles]
     except InvalidDateRangeError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    return [to_preview_response(t) for t in tiles]
 
 
 @router.post("/save", response_model=list[ImageResponse], status_code=201)
@@ -79,7 +77,9 @@ async def save_images(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     area_access_policy: IAreaAccessPolicy = Depends(get_area_access_policy),
     repo: ImageRepository = Depends(get_image_repository),
-    storage: FileImageStorage = Depends(get_image_storage),
+    storage: LocalImageStorage = Depends(get_image_storage),
+    redis_cache: RedisImageCache = Depends(get_redis_cache),
+    session: AsyncSession = Depends(get_session),
 ) -> list[ImageResponse]:
     try:
         await image_service.save_images(
@@ -88,6 +88,8 @@ async def save_images(
             area_access_policy=area_access_policy,
             repo=repo,
             storage=storage,
+            cache=redis_cache,
+            session=session
         )
         images = await image_service.get_images(
             area_id=payload.area_id,
@@ -95,13 +97,13 @@ async def save_images(
             area_access_policy=area_access_policy,
             repo=repo,
         )
-        return [to_image_response(img) for img in images]
     except NoPreviewAvailableError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    return [to_image_response(img) for img in images]
 
 
 @router.get("", response_model=list[ImageResponse])
@@ -118,20 +120,20 @@ async def get_images(
             area_access_policy=area_access_policy,
             repo=repo,
         )
-        return [to_image_response(img) for img in images]
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    return [to_image_response(img) for img in images]
 
 
 @router.get("/{image_id}/png")
-async def get_image_png(
+async def get_image_as_png(
     image_id: uuid.UUID,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     area_access_policy: IAreaAccessPolicy = Depends(get_area_access_policy),
     repo: ImageRepository = Depends(get_image_repository),
-    storage: FileImageStorage = Depends(get_image_storage),
+    storage: LocalImageStorage = Depends(get_image_storage),
 ) -> FastAPIResponse:
     try:
         png_bytes = await image_service.get_image_as_png(
@@ -141,11 +143,11 @@ async def get_image_png(
             area_access_policy=area_access_policy,
             storage=storage,
         )
-        return FastAPIResponse(content=png_bytes, media_type="image/png")
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    return FastAPIResponse(content=png_bytes, media_type="image/png")
 
 
 @router.delete("", status_code=204)
@@ -154,7 +156,7 @@ async def delete_images(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     area_access_policy: IAreaAccessPolicy = Depends(get_area_access_policy),
     repo: ImageRepository = Depends(get_image_repository),
-    storage: FileImageStorage = Depends(get_image_storage),
+    storage: LocalImageStorage = Depends(get_image_storage),
     publisher: IEventPublisher = Depends(get_event_publisher),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
@@ -166,11 +168,10 @@ async def delete_images(
             repo=repo,
             storage=storage,
             publisher=publisher,
+            session=session
         )
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e))
-    await session.commit()
-    await publisher.run_post_commit()
     return Response(status_code=204)

@@ -5,6 +5,7 @@ import uuid
 
 import numpy as np
 from rasterio.io import MemoryFile
+from rasterio.transform import array_bounds
 from rasterio.windows import Window
 from sentinelhub import (
     BBox, BBoxSplitter, CRS, DataCollection,
@@ -13,6 +14,7 @@ from sentinelhub import (
 )
 
 from app.image.dto import TileResult
+from app.image.entity.image import ImageBounds
 
 
 _RESOLUTION = 10
@@ -66,7 +68,6 @@ class SentinelHubGateway:
         responses = await asyncio.to_thread(
             client.download,
             download_list,
-            max_threads=len(download_list),
             decode_data=False,
         )
 
@@ -129,9 +130,17 @@ class SentinelHubGateway:
                         _, h, w = data.shape
                         if h < _TILE_PX or w < _TILE_PX:
                             data = np.pad(data, ((0, 0), (0, _TILE_PX - h), (0, _TILE_PX - w)))
+                        win_transform = src.window_transform(win)
+                        bottom, left, top, right = array_bounds(h, w, win_transform)
                         results.append(TileResult(
                             image_id=uuid.uuid4(),
-                            tiff_bytes=self._write_tiff(data, src.window_transform(win), src.crs),
+                            bounds=ImageBounds(
+                                min_lat=bottom,
+                                min_lon=left,
+                                max_lat=top,
+                                max_lon=right,
+                            ),
+                            tiff_bytes=self._write_tiff(data, win_transform, src.crs),
                         ))
         return results
 

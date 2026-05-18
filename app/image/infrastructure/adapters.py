@@ -11,7 +11,7 @@ class ImageReaderAdapter:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get_images_for_area(self, area_id: UUID) -> list[ImageInfo]:
+    async def get_images_by_area(self, area_id: UUID) -> list[ImageInfo]:
         result = await self._session.execute(
             select(Image).where(Image.area_id == area_id)
         )

@@ -14,7 +14,7 @@ class ImageRepository:
 
     async def save(self, image: Image) -> None:
         self._session.add(to_orm(image))
-        await self._session.commit()
+        await self._session.flush()
 
     async def find_by_id(self, image_id: UUID) -> Image | None:
         result = await self._session.execute(
