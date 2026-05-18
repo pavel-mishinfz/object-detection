@@ -4,17 +4,16 @@ from typing import Optional
 from fastapi import Depends, Request
 from fastapi_users import BaseUserManager, InvalidPasswordException, UUIDIDMixin
 
-from app.user.application.interfaces import IEmailSender
-from app.user.domain import validators
-from app.user.domain.errors import UserValidationError
+from app.user.exceptions import UserValidationError
 from app.user.infrastructure.email_gateway import SmtpEmailSender, get_email_sender
-from app.user.infrastructure.models import User
 from app.user.infrastructure.secret_provider import SecretProvider, get_secret_provider
 from app.user.infrastructure.user_db import get_user_db
+from app.user.models.user import User
+from app.user.services import validators
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
-    def __init__(self, user_db, email_sender: IEmailSender) -> None:
+    def __init__(self, user_db, email_sender: SmtpEmailSender) -> None:
         super().__init__(user_db)
         self._email_sender = email_sender
 

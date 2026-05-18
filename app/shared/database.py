@@ -24,7 +24,8 @@ async def init_db() -> None:
     from app.analysis.models import detection_result as _analysis_models  # noqa: F401
     from app.image.models import image as _image_models  # noqa: F401
     from app.map.models import area as _map_area  # noqa: F401
-    from app.user.infrastructure import models as _user_models  # noqa: F401
+    from app.user.models import group as _user_group_models  # noqa: F401
+    from app.user.models import user as _user_models  # noqa: F401
 
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

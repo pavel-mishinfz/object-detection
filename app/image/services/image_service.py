@@ -13,7 +13,8 @@ from app.image.infrastructure.repository import ImageRepository
 from app.image.infrastructure.sentinel_gateway import SentinelHubGateway
 from app.image.infrastructure.image_cache import RedisImageCache
 from app.image.services.validators import validate_date_range
-from app.shared.contracts import IAreaAccessPolicy, IAreaReader, IEventPublisher
+from app.image.contracts import IAreaReader
+from app.shared.contracts import IAreaAccessPolicy, IEventPublisher
 from app.shared.events import ImagesByAreaDeleted
 
 

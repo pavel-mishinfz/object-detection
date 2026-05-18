@@ -6,7 +6,7 @@ from fastapi_users.jwt import generate_jwt
 
 from app.user.infrastructure.secret_provider import SecretProvider, get_secret_provider
 
-_ACCESS_TOKEN_LIFETIME = 1800  # 30 минут
+ACCESS_TOKEN_LIFETIME = 1800  # 30 минут
 
 
 class CustomJWTStrategy(JWTStrategy):
@@ -26,5 +26,5 @@ def get_jwt_strategy(
 ) -> JWTStrategy:
     return CustomJWTStrategy(
         secret=secret_provider.jwt_secret,
-        lifetime_seconds=_ACCESS_TOKEN_LIFETIME,
+        lifetime_seconds=ACCESS_TOKEN_LIFETIME,
     )

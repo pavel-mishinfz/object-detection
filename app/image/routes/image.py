@@ -9,6 +9,8 @@ from app.image.dependencies import (
     get_image_storage,
     get_redis_cache,
     get_sentinel_gateway,
+    get_area_reader,
+    get_area_access_policy
 )
 from app.image.exceptions import InvalidDateRangeError, NoPreviewAvailableError
 from app.image.infrastructure.image_storage import LocalImageStorage
@@ -24,12 +26,12 @@ from app.image.schemas.image import (
     to_preview_response,
 )
 from app.image.services import image_service
-from app.map.dependencies import get_area_access_policy, get_area_reader
-from app.shared.contracts import IAreaAccessPolicy, IAreaReader, IEventPublisher
+from app.image.contracts import IAreaReader
+from app.shared.contracts import IAreaAccessPolicy, IEventPublisher
 from app.shared.database import get_session
 from app.shared.dependencies import get_event_publisher
 from app.shared.exceptions import AccessDeniedError, NotFoundError
-from app.user.infrastructure.auth_backend import get_current_user_id
+from app.user.dependencies import get_current_user_id
 
 router = APIRouter(prefix="/images", tags=["images"])
 

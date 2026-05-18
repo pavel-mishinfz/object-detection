@@ -5,10 +5,10 @@ from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.database import get_session
-from app.user.infrastructure.models import User
+from app.user.models.user import User
 
 
 async def get_user_db(
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
 ) -> AsyncGenerator[SQLAlchemyUserDatabase]:
     yield SQLAlchemyUserDatabase(session, User)

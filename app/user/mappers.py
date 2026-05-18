@@ -1,5 +1,7 @@
-from app.user.domain.user import Group, User
-from app.user.infrastructure.models import Group as GroupRecord, User as UserRecord
+from app.user.entity.group import Group
+from app.user.entity.user import User
+from app.user.models.group import Group as GroupRecord
+from app.user.models.user import User as UserRecord
 
 
 def to_domain_group(record: GroupRecord) -> Group:

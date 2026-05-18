@@ -24,7 +24,7 @@ from app.map.schemas.area import (
     to_summary_response,
 )
 from app.map.services import area_service
-from app.user.infrastructure.auth_backend import get_current_user_id
+from app.user.dependencies import get_current_user_id
 
 router = APIRouter(prefix="/areas", tags=["areas"])
 

@@ -1,15 +1,8 @@
 from fastapi_users.db import SQLAlchemyBaseUserTableUUID
-from sqlalchemy import Column, ForeignKey, Integer, String
+from sqlalchemy import Column, ForeignKey, String
 from sqlalchemy.orm import mapped_column, relationship
 
 from app.shared.database import Base
-
-
-class Group(Base):
-    __tablename__ = "group"
-
-    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
-    name = Column(String, nullable=False, unique=True)
 
 
 class User(SQLAlchemyBaseUserTableUUID, Base):

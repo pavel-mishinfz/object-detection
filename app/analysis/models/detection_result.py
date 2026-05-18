@@ -20,7 +20,7 @@ class ObjectType(Base):
 class DetectionResult(Base):
     __tablename__ = "detection_result"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     area_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     image_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     geometry = Column(Geometry(geometry_type="POLYGON", srid=4326), nullable=False)

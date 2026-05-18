@@ -1,7 +1,6 @@
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.shared.contracts import IAreaAccessPolicy, IAreaReader
 from app.shared.database import get_session
 from app.map.infrastructure.adapters import AreaAccessPolicyAdapter, AreaReaderAdapter
 from app.map.infrastructure.repository import AreaRepository
@@ -13,13 +12,13 @@ def get_area_repository(
     return AreaRepository(session)
 
 
-def get_area_reader(
+def get_area_reader_adapter(
     session: AsyncSession = Depends(get_session),
-) -> IAreaReader:
+) -> AreaReaderAdapter:
     return AreaReaderAdapter(session)
 
 
-def get_area_access_policy(
+def get_area_access_policy_adapter(
     session: AsyncSession = Depends(get_session),
-) -> IAreaAccessPolicy:
+) -> AreaAccessPolicyAdapter:
     return AreaAccessPolicyAdapter(session)

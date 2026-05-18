@@ -2,10 +2,14 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Config, load_config
+from app.image.contracts import IAreaReader
+from app.image.infrastructure.adapters import ImageReaderAdapter
 from app.image.infrastructure.image_storage import LocalImageStorage
 from app.image.infrastructure.repository import ImageRepository
 from app.image.infrastructure.image_cache import RedisImageCache
 from app.image.infrastructure.sentinel_gateway import SentinelHubGateway
+from app.map.dependencies import get_area_reader_adapter, get_area_access_policy_adapter
+from app.shared.contracts import IAreaAccessPolicy
 from app.shared.database import get_session
 
 
@@ -15,13 +19,23 @@ def get_image_repository(
     return ImageRepository(session)
 
 
-def get_image_storage(
-    cfg: Config = Depends(load_config)
-) -> LocalImageStorage:
+def get_image_reader_adapter(
+    session: AsyncSession = Depends(get_session),
+) -> ImageReaderAdapter:
+    return ImageReaderAdapter(session)
+
+
+def create_image_storage(cfg: Config) -> LocalImageStorage:
     return LocalImageStorage(
         temp_dir=cfg.sentinel_temp_dir,
         images_dir=cfg.sentinel_images_dir,
     )
+
+
+def get_image_storage(
+    cfg: Config = Depends(load_config)
+) -> LocalImageStorage:
+    return create_image_storage(cfg)
 
 
 def get_redis_cache(
@@ -41,3 +55,15 @@ def get_sentinel_gateway(
         client_id=cfg.sentinel_client_id,
         client_secret=cfg.sentinel_client_secret.get_secret_value(),
     )
+
+
+def get_area_reader(
+    adapter: IAreaReader = Depends(get_area_reader_adapter),
+) -> IAreaReader:
+    return adapter
+
+
+def get_area_access_policy(
+    adapter: IAreaAccessPolicy = Depends(get_area_access_policy_adapter),
+) -> IAreaAccessPolicy:
+    return adapter

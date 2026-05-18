@@ -3,12 +3,6 @@ from uuid import UUID
 
 
 @dataclass(frozen=True)
-class Group:
-    id: int
-    name: str
-
-
-@dataclass(frozen=True)
 class User:
     id: UUID
     email: str

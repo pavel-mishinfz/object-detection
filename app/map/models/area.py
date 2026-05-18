@@ -13,7 +13,7 @@ class Area(Base):
         UniqueConstraint("user_id", "name", name="uq_area_user_name"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     name = Column(String, nullable=False)
     geometry = Column(Geometry(geometry_type="POLYGON", srid=4326), nullable=False)

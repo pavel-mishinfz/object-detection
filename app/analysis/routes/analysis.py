@@ -8,6 +8,7 @@ from app.analysis.dependencies import (
     get_detection_result_repository,
     get_image_reader,
     get_object_type_repository,
+    get_area_access_policy
 )
 from app.analysis.infrastructure.detection_engine import YoloDetectionEngine
 from app.analysis.exceptions import NoImagesError
@@ -18,11 +19,11 @@ from app.analysis.schemas.analysis import (
     to_detection_result_response,
 )
 from app.analysis.services import analysis_service
-from app.map.dependencies import get_area_access_policy
-from app.shared.contracts import IAreaAccessPolicy, IImageReader
+from app.analysis.contracts import IImageReader
+from app.shared.contracts import IAreaAccessPolicy
 from app.shared.database import get_session
 from app.shared.exceptions import AccessDeniedError, NotFoundError
-from app.user.infrastructure.auth_backend import get_current_user_id
+from app.user.dependencies import get_current_user_id
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 

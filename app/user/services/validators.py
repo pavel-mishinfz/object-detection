@@ -1,4 +1,4 @@
-from app.user.domain.errors import GroupValidationError, UserValidationError
+from app.user.exceptions import GroupValidationError, UserValidationError
 
 
 def validate_password(password: str, email: str) -> None:

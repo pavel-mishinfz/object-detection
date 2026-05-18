@@ -5,10 +5,9 @@ from smtplib import SMTP_SSL
 from fastapi import Depends
 
 from app.config import Config, load_config
-from app.user.application.interfaces import IEmailSender
 
 
-class SmtpEmailSender(IEmailSender):
+class SmtpEmailSender:
     def __init__(
         self,
         sender_email: str,
@@ -23,15 +22,11 @@ class SmtpEmailSender(IEmailSender):
 
     async def send_reset_password(self, to_email: str, token: str) -> None:
         html = _render_reset_password(token)
-        await asyncio.to_thread(
-            self._send_smtp, html, "Сброс пароля", to_email
-        )
+        await asyncio.to_thread(self._send_smtp, html, "Сброс пароля", to_email)
 
     async def send_verification(self, to_email: str, token: str) -> None:
         html = _render_verification(token)
-        await asyncio.to_thread(
-            self._send_smtp, html, "Подтверждение аккаунта", to_email
-        )
+        await asyncio.to_thread(self._send_smtp, html, "Подтверждение аккаунта", to_email)
 
     def _send_smtp(self, html: str, subject: str, to: str) -> None:
         msg = MIMEText(html, "html")
@@ -41,6 +36,15 @@ class SmtpEmailSender(IEmailSender):
         with SMTP_SSL(self._smtp_server, port=self._smtp_port) as server:
             server.login(self._sender_email, self._sender_password)
             server.send_message(msg)
+
+
+def get_email_sender(cfg: Config = Depends(load_config)) -> SmtpEmailSender:
+    return SmtpEmailSender(
+        sender_email=cfg.sender_email,
+        sender_password=cfg.sender_password.get_secret_value(),
+        smtp_server=cfg.smtp_server,
+        smtp_port=cfg.smtp_port,
+    )
 
 
 def _render_reset_password(token: str) -> str:
@@ -81,12 +85,3 @@ def _render_verification(token: str) -> str:
         </body>
     </html>
     """
-
-
-def get_email_sender(cfg: Config = Depends(load_config)) -> SmtpEmailSender:
-    return SmtpEmailSender(
-        sender_email=cfg.sender_email,
-        sender_password=cfg.sender_password.get_secret_value(),
-        smtp_server=cfg.smtp_server,
-        smtp_port=cfg.smtp_port,
-    )

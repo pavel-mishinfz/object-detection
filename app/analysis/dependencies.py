@@ -2,11 +2,13 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Config, load_config
-from app.shared.contracts import IImageReader
-from app.shared.database import get_session
-from app.image.infrastructure.adapters import ImageReaderAdapter
+from app.analysis.contracts import IImageReader
 from app.analysis.infrastructure.detection_engine import YoloDetectionEngine
 from app.analysis.infrastructure.repository import DetectionResultRepository, ObjectTypeRepository
+from app.image.dependencies import get_image_reader_adapter
+from app.map.dependencies import get_area_access_policy_adapter
+from app.shared.contracts import IAreaAccessPolicy
+from app.shared.database import get_session
 
 
 def get_detection_engine(
@@ -28,6 +30,12 @@ def get_object_type_repository(
 
 
 def get_image_reader(
-    session: AsyncSession = Depends(get_session),
+    adapter: IImageReader = Depends(get_image_reader_adapter),
 ) -> IImageReader:
-    return ImageReaderAdapter(session)
+    return adapter
+
+
+def get_area_access_policy(
+    adapter: IAreaAccessPolicy = Depends(get_area_access_policy_adapter),
+) -> IAreaAccessPolicy:
+    return adapter

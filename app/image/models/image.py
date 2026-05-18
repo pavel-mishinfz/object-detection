@@ -9,7 +9,7 @@ from app.shared.database import Base
 class Image(Base):
     __tablename__ = "image"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     area_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     source = Column(String(50), nullable=False)
     path = Column(String, nullable=False)

@@ -6,8 +6,9 @@ from fastapi_users import FastAPIUsers
 from fastapi_users.authentication import AuthenticationBackend, BearerTransport
 
 from app.user.infrastructure.jwt_strategy import get_jwt_strategy
-from app.user.infrastructure.models import User
 from app.user.infrastructure.user_manager import get_user_manager
+from app.user.models.user import User
+
 
 bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 

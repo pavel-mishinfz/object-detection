@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.shared.contracts import ImageInfo
+from app.shared.dto import ImageInfo
 from app.image.models.image import Image
 
 

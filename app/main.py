@@ -12,16 +12,16 @@ from app.analysis.services.event_handlers import (
     on_images_deleted as analysis_on_images_deleted,
 )
 from app.config import load_config
-from app.image.infrastructure.image_storage import LocalImageStorage
+from app.image.dependencies import create_image_storage
 from app.image.services.event_handlers import make_on_area_deleted as make_image_on_area_deleted
 from app.image.routes.image import router as image_router
 from app.shared.database import get_session, init_db
 from app.shared.event_bus import EventBus
 from app.shared.events import AreaDeleted, ImagesByAreaDeleted
 from app.map.routes.area import router as map_router
-from app.user.application import use_cases as user_use_cases
 from app.user.infrastructure.group_repository import GroupRepository
-from app.user.presentation.router import router as user_router
+from app.user.routes.user import router as user_router
+from app.user.services import group_service
 
 cfg = load_config()
 
@@ -32,8 +32,9 @@ async def _seed_groups() -> None:
     async for session in get_session():
         repo = GroupRepository(session)
         for g in groups:
-            await user_use_cases.upsert_group(group_id=g["id"], name=g["name"], repo=repo)
-        await session.commit()
+            await group_service.upsert_group(
+                group_id=g["id"], name=g["name"], repo=repo, session=session
+            )
 
 
 async def _seed_object_types() -> None:
@@ -55,7 +56,7 @@ async def lifespan(app: FastAPI):
     await _seed_object_types()
     bus.subscribe(AreaDeleted, analysis_on_area_deleted)
     bus.subscribe(ImagesByAreaDeleted, analysis_on_images_deleted)
-    image_storage = LocalImageStorage(cfg.sentinel_temp_dir, cfg.sentinel_images_dir)
+    image_storage = create_image_storage(cfg)
     bus.subscribe(AreaDeleted, make_image_on_area_deleted(image_storage))
     yield
 

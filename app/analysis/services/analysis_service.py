@@ -8,7 +8,8 @@ from app.analysis.entity.detection_result import DetectionResult, ObjectType
 from app.analysis.exceptions import NoImagesError
 from app.analysis.infrastructure.detection_engine import YoloDetectionEngine
 from app.analysis.infrastructure.repository import DetectionResultRepository, ObjectTypeRepository
-from app.shared.contracts import IAreaAccessPolicy, IImageReader
+from app.analysis.contracts import IImageReader
+from app.shared.contracts import IAreaAccessPolicy
 
 
 # --- Impure functions (commands) ---
