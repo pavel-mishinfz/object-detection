@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.analysis.domain.detection_result import DetectionResult, ObjectType
+from app.analysis.entity.detection_result import DetectionResult, ObjectType
 
 
 class ObjectTypeResponse(BaseModel):

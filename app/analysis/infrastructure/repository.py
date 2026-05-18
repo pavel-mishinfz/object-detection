@@ -1,34 +1,27 @@
 from uuid import UUID
 
-from geoalchemy2.shape import from_shape
-from shapely.geometry import Polygon
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analysis.application.interfaces import IDetectionResultRepository, IObjectTypeRepository
-from app.analysis.domain.detection_result import DetectionResult, ObjectType
-from app.analysis.infrastructure.mappers import to_domain_detection_result, to_domain_object_type
-from app.analysis.infrastructure.models import DetectionResult as DetectionResultRecord
-from app.analysis.infrastructure.models import ObjectType as ObjectTypeRecord
+from app.analysis.entity.detection_result import DetectionResult, ObjectType
+from app.analysis.mappers import (
+    to_domain_detection_result, 
+    to_domain_object_type, 
+    to_orm_detection_result,
+    to_orm_object_type
+)
+from app.analysis.models.detection_result import DetectionResult as DetectionResultRecord
+from app.analysis.models.detection_result import ObjectType as ObjectTypeRecord
 
 
-class DetectionResultRepository(IDetectionResultRepository):
+class DetectionResultRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def save(self, result: DetectionResult) -> None:
-        record = DetectionResultRecord(
-            id=result.id,
-            area_id=result.area_id,
-            image_id=result.image_id,
-            geometry=from_shape(Polygon(result.geometry), srid=4326),
-            score=result.score,
-            object_type_id=result.object_type.id,
-            created_at=result.created_at,
-        )
-        self._session.add(record)
-        await self._session.commit()
+        self._session.add(to_orm_detection_result(result))
+        await self._session.flush()
 
     async def find_by_area(self, area_id: UUID) -> list[DetectionResult]:
         result = await self._session.execute(
@@ -51,7 +44,7 @@ class DetectionResultRepository(IDetectionResultRepository):
         await self._session.flush()
 
 
-class ObjectTypeRepository(IObjectTypeRepository):
+class ObjectTypeRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
@@ -63,13 +56,14 @@ class ObjectTypeRepository(IObjectTypeRepository):
         return to_domain_object_type(record) if record else None
 
     async def upsert(self, object_type: ObjectType) -> None:
+        orm = to_orm_object_type(object_type)
         stmt = (
             pg_insert(ObjectTypeRecord)
-            .values(id=object_type.id, name=object_type.name)
+            .values(id=orm.id, name=orm.name)
             .on_conflict_do_update(
                 index_elements=["id"],
                 set_={"name": object_type.name},
             )
         )
         await self._session.execute(stmt)
-        await self._session.commit()
+        await self._session.flush()

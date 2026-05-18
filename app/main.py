@@ -4,21 +4,20 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.analysis.application.event_handlers import (
-    on_area_deleted as analysis_on_area_deleted,
-    on_images_deleted as analysis_on_images_deleted
-)
-from app.analysis.domain.detection_result import ObjectType
-from app.analysis.infrastructure.detection_engine import YoloDetectionEngine
+from app.analysis.entity.detection_result import ObjectType
 from app.analysis.infrastructure.repository import ObjectTypeRepository
-from app.analysis.presentation.router import router as analysis_router
-from app.composition import set_detection_engine
+from app.analysis.routes.analysis import router as analysis_router
+from app.analysis.services.event_handlers import (
+    on_area_deleted as analysis_on_area_deleted,
+    on_images_deleted as analysis_on_images_deleted,
+)
 from app.config import load_config
-from app.image.services.event_handlers import on_area_deleted as image_on_area_deleted
+from app.image.infrastructure.image_storage import LocalImageStorage
+from app.image.services.event_handlers import make_on_area_deleted as make_image_on_area_deleted
 from app.image.routes.image import router as image_router
 from app.shared.database import get_session, init_db
 from app.shared.event_bus import EventBus
-from app.shared.events import AreaDeleted, ImagesDeleted
+from app.shared.events import AreaDeleted, ImagesByAreaDeleted
 from app.map.routes.area import router as map_router
 from app.user.application import use_cases as user_use_cases
 from app.user.infrastructure.group_repository import GroupRepository
@@ -54,10 +53,10 @@ async def lifespan(app: FastAPI):
     await init_db()
     await _seed_groups()
     await _seed_object_types()
-    set_detection_engine(YoloDetectionEngine(cfg.model_path))
     bus.subscribe(AreaDeleted, analysis_on_area_deleted)
-    bus.subscribe(ImagesDeleted, analysis_on_images_deleted)
-    bus.subscribe(AreaDeleted, image_on_area_deleted)
+    bus.subscribe(ImagesByAreaDeleted, analysis_on_images_deleted)
+    image_storage = LocalImageStorage(cfg.sentinel_temp_dir, cfg.sentinel_images_dir)
+    bus.subscribe(AreaDeleted, make_image_on_area_deleted(image_storage))
     yield
 
 
