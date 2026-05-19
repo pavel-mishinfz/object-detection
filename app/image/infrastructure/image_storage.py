@@ -5,6 +5,7 @@ import uuid
 from pathlib import Path
 from uuid import UUID
 
+import numpy as np
 import PIL.Image
 import rasterio
 
@@ -42,12 +43,16 @@ class LocalImageStorage:
             #raise ImageNotFoundError(f"Файл по пути {path} не найден")
 
     async def get_image_as_png_bytes(self, path: str) -> bytes:
-        with PIL.Image.open(path) as img:
-            img = img.convert("RGB")
-            buffer = io.BytesIO()
-            img.save(buffer, format="PNG")
-            buffer.seek(0)
-            return buffer.read()
+        with rasterio.open(path) as src:
+            tags = src.tags()
+            h = int(tags.get("original_height", src.height))
+            w = int(tags.get("original_width", src.width))
+            data = src.read()[:, :h, :w]
+        img = PIL.Image.fromarray(np.transpose(data, (1, 2, 0)).astype(np.uint8))
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        return buffer.read()
     
     def _build_temp_path(self, image_id: UUID) -> Path:
         return self._temp_dir / f"{image_id}.tiff"

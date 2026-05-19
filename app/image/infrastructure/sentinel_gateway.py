@@ -131,7 +131,7 @@ class SentinelHubGateway:
                         if h < _TILE_PX or w < _TILE_PX:
                             data = np.pad(data, ((0, 0), (0, _TILE_PX - h), (0, _TILE_PX - w)))
                         win_transform = src.window_transform(win)
-                        bottom, left, top, right = array_bounds(h, w, win_transform)
+                        left, bottom, right, top = array_bounds(h, w, win_transform)
                         results.append(TileResult(
                             image_id=uuid.uuid4(),
                             bounds=ImageBounds(
@@ -140,11 +140,11 @@ class SentinelHubGateway:
                                 max_lat=top,
                                 max_lon=right,
                             ),
-                            tiff_bytes=self._write_tiff(data, win_transform, src.crs),
+                            tiff_bytes=self._write_tiff(data, win_transform, src.crs, h, w),
                         ))
         return results
 
-    def _write_tiff(self, arr: np.ndarray, transform, crs) -> bytes:
+    def _write_tiff(self, arr: np.ndarray, transform, crs, original_h: int, original_w: int) -> bytes:
         with MemoryFile() as memfile:
             with memfile.open(
                 driver="GTiff",
@@ -156,4 +156,5 @@ class SentinelHubGateway:
                 transform=transform,
             ) as dataset:
                 dataset.write(arr)
+                dataset.update_tags(original_height=original_h, original_width=original_w)
             return memfile.read()
