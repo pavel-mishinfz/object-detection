@@ -14,7 +14,7 @@ from app.image.infrastructure.sentinel_gateway import SentinelHubGateway
 from app.image.infrastructure.image_cache import RedisImageCache
 from app.image.services.validators import validate_date_range
 from app.image.contracts import IAreaReader
-from app.shared.contracts import IAreaAccessPolicy, IEventPublisher
+from app.shared.contracts import IEventPublisher
 from app.shared.events import ImagesByAreaDeleted
 
 
@@ -39,17 +39,14 @@ def compute_area_hash(
 
 async def fetch_previews(
     area_id: UUID,
-    user_id: UUID,
     date_start: date,
     date_end: date,
-    area_access_policy: IAreaAccessPolicy,
     area_reader: IAreaReader,
     sentinel_gateway: SentinelHubGateway,
     cache: RedisImageCache,
     storage: LocalImageStorage,
 ) -> None:
     validate_date_range(date_start, date_end, date.today())
-    await area_access_policy.check_ownership(area_id, user_id)
     coordinates = await area_reader.get_geometry(area_id)
 
     area_hash = compute_area_hash(coordinates, date_start, date_end)
@@ -72,15 +69,11 @@ async def fetch_previews(
 
 async def save_images(
     area_id: UUID,
-    user_id: UUID,
-    area_access_policy: IAreaAccessPolicy,
     repo: ImageRepository,
     cache: RedisImageCache,
     storage: LocalImageStorage,
     session: AsyncSession,
 ) -> None:
-    await area_access_policy.check_ownership(area_id, user_id)
-
     cached = await cache.get(area_id)
     if cached is None:
         raise NoPreviewAvailableError(
@@ -108,14 +101,11 @@ async def save_images(
 
 async def delete_images(
     area_id: UUID,
-    user_id: UUID,
-    area_access_policy: IAreaAccessPolicy,
     repo: ImageRepository,
     storage: LocalImageStorage,
     publisher: IEventPublisher,
     session: AsyncSession,
 ) -> None:
-    await area_access_policy.check_ownership(area_id, user_id)
     images = await repo.find_by_area(area_id)
     await repo.delete_by_area(area_id)
     await publisher.publish(ImagesByAreaDeleted(area_id=area_id))
@@ -129,12 +119,8 @@ async def delete_images(
 
 async def get_preview_tiles(
     area_id: UUID,
-    user_id: UUID,
-    area_access_policy: IAreaAccessPolicy,
     cache: RedisImageCache,
 ) -> list[TilePreview]:
-    await area_access_policy.check_ownership(area_id, user_id)
-
     cached = await cache.get(area_id)
     if cached is None:
         return []
@@ -144,24 +130,18 @@ async def get_preview_tiles(
 
 async def get_images(
     area_id: UUID,
-    user_id: UUID,
-    area_access_policy: IAreaAccessPolicy,
     repo: ImageRepository,
 ) -> list[Image]:
-    await area_access_policy.check_ownership(area_id, user_id)
     return await repo.find_by_area(area_id)
 
 
 async def get_image_as_png(
     image_id: UUID,
-    user_id: UUID,
     repo: ImageRepository,
-    area_access_policy: IAreaAccessPolicy,
     storage: LocalImageStorage,
 ) -> bytes:
     image = await repo.find_by_id(image_id)
     if image is not None:
-        await area_access_policy.check_ownership(image.area_id, user_id)
         return await storage.get_image_as_png_bytes(image.path)
 
     temp_path = storage.get_temp_path(image_id)

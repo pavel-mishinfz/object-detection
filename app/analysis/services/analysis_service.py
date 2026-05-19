@@ -9,22 +9,18 @@ from app.analysis.exceptions import NoImagesError
 from app.analysis.infrastructure.detection_engine import YoloDetectionEngine
 from app.analysis.infrastructure.repository import DetectionResultRepository, ObjectTypeRepository
 from app.analysis.contracts import IImageReader
-from app.shared.contracts import IAreaAccessPolicy
 
 
 # --- Impure functions (commands) ---
 
 async def run_analysis(
     area_id: UUID,
-    user_id: UUID,
-    area_access_policy: IAreaAccessPolicy,
     image_reader: IImageReader,
     engine: YoloDetectionEngine,
     repo: DetectionResultRepository,
     object_type_repo: ObjectTypeRepository,
     session: AsyncSession
 ) -> None:
-    await area_access_policy.check_ownership(area_id, user_id)
 
     existing = await repo.find_by_area(area_id)
     if existing:
@@ -55,12 +51,9 @@ async def run_analysis(
 
 async def delete_results(
     area_id: UUID,
-    user_id: UUID,
-    area_access_policy: IAreaAccessPolicy,
     repo: DetectionResultRepository,
     session: AsyncSession
 ) -> None:
-    await area_access_policy.check_ownership(area_id, user_id)
     await repo.delete_by_area(area_id)
     await session.commit()
 
@@ -69,9 +62,6 @@ async def delete_results(
 
 async def get_results(
     area_id: UUID,
-    user_id: UUID,
-    area_access_policy: IAreaAccessPolicy,
     repo: DetectionResultRepository,
 ) -> list[DetectionResult]:
-    await area_access_policy.check_ownership(area_id, user_id)
     return await repo.find_by_area(area_id)

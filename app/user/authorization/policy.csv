@@ -1,6 +1,13 @@
-p, r.sub.id == r.obj.owner_id, /areas/*, GET
-p, r.sub.id == r.obj.owner_id, /areas/*, PUT
-p, r.sub.id == r.obj.owner_id, /areas/*, DELETE
-p, r.sub.group_id == 1, /areas/*, GET
-p, r.sub.group_id == 1, /areas/*, PUT
-p, r.sub.group_id == 1, /areas/*, DELETE
+p,r.sub.user_id == r.obj.body.user_id,/areas$,POST
+p,r.sub.user_id == r.obj.params.user_id,/areas/user/.*,GET
+p,r.sub.owns_area,/areas/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$,GET
+p,r.sub.owns_area and (r.sub.user_id == r.obj.body.user_id),/areas/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$,PUT
+p,r.sub.owns_area,/areas/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$,DELETE
+p,r.sub.owns_area,/images/preview$,POST
+p,r.sub.owns_area,/images/save$,POST
+p,r.sub.owns_area,/images$,(GET|DELETE)
+p,r.sub.owns_area,/images/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/png$,GET
+p,r.sub.owns_area,/analysis$,(POST|GET|DELETE)
+p,r.sub.group_id == 1,/groups.*,(GET|POST|PUT|DELETE)
+p,r.sub.group_id == 1 or r.sub.group_id == 2,/users/me,(GET)|(PATCH)|(DELETE)
+p,r.sub.group_id == 1,/users/.*,(GET|POST|PUT|DELETE)

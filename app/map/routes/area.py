@@ -1,7 +1,6 @@
 import uuid
-from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.shared.contracts import IEventPublisher
@@ -24,7 +23,6 @@ from app.map.schemas.area import (
     to_summary_response,
 )
 from app.map.services import area_service
-from app.user.dependencies import get_current_user_id
 
 router = APIRouter(prefix="/areas", tags=["areas"])
 
@@ -32,7 +30,6 @@ router = APIRouter(prefix="/areas", tags=["areas"])
 @router.post("", response_model=PolygonResponse, status_code=201)
 async def create_area(
     payload: CreatePolygonRequest,
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
     repo: AreaRepository = Depends(get_area_repository),
     session: AsyncSession = Depends(get_session),
 ) -> PolygonResponse:
@@ -40,7 +37,7 @@ async def create_area(
     try:
         await area_service.create_polygon(
             polygon_id=polygon_id,
-            user_id=current_user_id,
+            user_id=payload.user_id,
             name=payload.name,
             coordinates=tuple(tuple(p) for p in payload.geometry.coordinates[0]),
             repo=repo,
@@ -55,13 +52,13 @@ async def create_area(
     return to_response(await area_service.get_polygon(polygon_id, repo))
 
 
-@router.get("", response_model=list[PolygonSummaryResponse])
+@router.get("/user/{user_id}", response_model=list[PolygonSummaryResponse])
 async def get_user_areas(
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
+    user_id: uuid.UUID,
     repo: AreaRepository = Depends(get_area_repository),
 ) -> list[PolygonSummaryResponse]:
     polygons = await area_service.get_user_polygons(
-        user_id=current_user_id, repo=repo
+        user_id=user_id, repo=repo
     )
     return [to_summary_response(p) for p in polygons]
 
@@ -79,15 +76,13 @@ async def get_area(
 async def update_area(
     polygon_id: uuid.UUID,
     payload: UpdatePolygonRequest,
-    request: Request,
     repo: AreaRepository = Depends(get_area_repository),
     session: AsyncSession = Depends(get_session),
 ) -> PolygonResponse:
-    current_user_id: UUID = request.state.current_user_id
     try:
         await area_service.update_polygon(
             polygon_id=polygon_id,
-            user_id=current_user_id,
+            user_id=payload.user_id,
             name=payload.name,
             coordinates=tuple(tuple(p) for p in payload.geometry.coordinates[0]),
             repo=repo,

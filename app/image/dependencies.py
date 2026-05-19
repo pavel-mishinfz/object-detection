@@ -8,8 +8,7 @@ from app.image.infrastructure.image_storage import LocalImageStorage
 from app.image.infrastructure.repository import ImageRepository
 from app.image.infrastructure.image_cache import RedisImageCache
 from app.image.infrastructure.sentinel_gateway import SentinelHubGateway
-from app.map.dependencies import get_area_reader_adapter, get_area_access_policy_adapter
-from app.shared.contracts import IAreaAccessPolicy
+from app.map.dependencies import get_area_reader_adapter
 from app.shared.database import get_session
 
 
@@ -60,10 +59,4 @@ def get_sentinel_gateway(
 def get_area_reader(
     adapter: IAreaReader = Depends(get_area_reader_adapter),
 ) -> IAreaReader:
-    return adapter
-
-
-def get_area_access_policy(
-    adapter: IAreaAccessPolicy = Depends(get_area_access_policy_adapter),
-) -> IAreaAccessPolicy:
     return adapter

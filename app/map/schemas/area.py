@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -14,6 +15,7 @@ class GeoJSONPolygon(BaseModel):
 class PolygonRequestBase(BaseModel):
     name: str
     geometry: GeoJSONPolygon
+    user_id: UUID
 
 
 class CreatePolygonRequest(PolygonRequestBase):
