@@ -66,7 +66,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             params["area_id"] = UUID(m.group(1))
         elif m := _IMAGE_IN_PATH_RE.search(path):
             params["area_id"] = await _get_area_id_for_image(UUID(m.group(1)))
-        elif body and (aid := body.get("area_id")):
+        elif request_body and (aid := request_body.get("area_id")):
             body["area_id"] = UUID(str(aid))
         elif qaid := request.query_params.get("area_id"):
             params["area_id"] = UUID(qaid)
