@@ -9,9 +9,9 @@ from app.analysis.dependencies import (
     get_image_reader,
     get_object_type_repository
 )
-from app.analysis.infrastructure.detection_engine import YoloDetectionEngine
 from app.analysis.exceptions import NoImagesError
-from app.analysis.infrastructure.repository import DetectionResultRepository, ObjectTypeRepository
+from app.analysis.interfaces.detection_engine import IDetectionEngine
+from app.analysis.interfaces.repository import IDetectionResultRepository, IObjectTypeRepository
 from app.analysis.schemas.analysis import (
     DetectionResultResponse,
     RunAnalysisRequest,
@@ -29,9 +29,9 @@ router = APIRouter(prefix="/analysis", tags=["analysis"])
 async def run_analysis(
     payload: RunAnalysisRequest,
     image_reader: IImageReader = Depends(get_image_reader),
-    engine: YoloDetectionEngine = Depends(get_detection_engine),
-    repo: DetectionResultRepository = Depends(get_detection_result_repository),
-    object_type_repo: ObjectTypeRepository = Depends(get_object_type_repository),
+    engine: IDetectionEngine = Depends(get_detection_engine),
+    repo: IDetectionResultRepository = Depends(get_detection_result_repository),
+    object_type_repo: IObjectTypeRepository = Depends(get_object_type_repository),
     session: AsyncSession = Depends(get_session)
 ) -> list[DetectionResultResponse]:
     try:
@@ -59,7 +59,7 @@ async def run_analysis(
 @router.get("", response_model=list[DetectionResultResponse])
 async def get_detection_results(
     area_id: uuid.UUID,
-    repo: DetectionResultRepository = Depends(get_detection_result_repository),
+    repo: IDetectionResultRepository = Depends(get_detection_result_repository),
 ) -> list[DetectionResultResponse]:
     try:
         results = await analysis_service.get_results(
@@ -76,7 +76,7 @@ async def get_detection_results(
 @router.delete("", status_code=204)
 async def delete_detection_results(
     area_id: uuid.UUID,
-    repo: DetectionResultRepository = Depends(get_detection_result_repository),
+    repo: IDetectionResultRepository = Depends(get_detection_result_repository),
     session: AsyncSession = Depends(get_session)
 ) -> Response:
     try:

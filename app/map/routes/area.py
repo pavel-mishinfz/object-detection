@@ -13,7 +13,7 @@ from app.map.exceptions import (
     PolygonNotFoundError,
     PolygonValidationError,
 )
-from app.map.infrastructure.repository import AreaRepository
+from app.map.interfaces.repository import IAreaRepository
 from app.map.schemas.area import (
     CreatePolygonRequest,
     PolygonResponse,
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/areas", tags=["areas"])
 @router.post("", response_model=PolygonResponse, status_code=201)
 async def create_area(
     payload: CreatePolygonRequest,
-    repo: AreaRepository = Depends(get_area_repository),
+    repo: IAreaRepository = Depends(get_area_repository),
     session: AsyncSession = Depends(get_session),
 ) -> PolygonResponse:
     polygon_id = uuid.uuid4()
@@ -55,7 +55,7 @@ async def create_area(
 @router.get("/user/{user_id}", response_model=list[PolygonSummaryResponse])
 async def get_user_areas(
     user_id: uuid.UUID,
-    repo: AreaRepository = Depends(get_area_repository),
+    repo: IAreaRepository = Depends(get_area_repository),
 ) -> list[PolygonSummaryResponse]:
     polygons = await area_service.get_user_polygons(
         user_id=user_id, repo=repo
@@ -66,7 +66,7 @@ async def get_user_areas(
 @router.get("/{polygon_id}", response_model=PolygonResponse)
 async def get_area(
     polygon_id: uuid.UUID,
-    repo: AreaRepository = Depends(get_area_repository),
+    repo: IAreaRepository = Depends(get_area_repository),
 ) -> PolygonResponse:
     polygon = await repo.find_by_id(polygon_id)
     return to_response(polygon)
@@ -76,7 +76,7 @@ async def get_area(
 async def update_area(
     polygon_id: uuid.UUID,
     payload: UpdatePolygonRequest,
-    repo: AreaRepository = Depends(get_area_repository),
+    repo: IAreaRepository = Depends(get_area_repository),
     session: AsyncSession = Depends(get_session),
 ) -> PolygonResponse:
     try:
@@ -100,7 +100,7 @@ async def update_area(
 @router.delete("/{polygon_id}", status_code=204)
 async def delete_area(
     polygon_id: uuid.UUID,
-    repo: AreaRepository = Depends(get_area_repository),
+    repo: IAreaRepository = Depends(get_area_repository),
     publisher: IEventPublisher = Depends(get_event_publisher),
     session: AsyncSession = Depends(get_session),
 ) -> Response:

@@ -8,13 +8,17 @@ from app.image.infrastructure.image_storage import LocalImageStorage
 from app.image.infrastructure.repository import ImageRepository
 from app.image.infrastructure.image_cache import RedisImageCache
 from app.image.infrastructure.sentinel_gateway import SentinelHubGateway
+from app.image.interfaces.image_cache import IImageCache
+from app.image.interfaces.image_storage import IImageStorage
+from app.image.interfaces.repository import IImageRepository
+from app.image.interfaces.sentinel_gateway import ISentinelGateway
 from app.map.dependencies import get_area_reader_adapter
 from app.shared.database import get_session
 
 
 def get_image_repository(
     session: AsyncSession = Depends(get_session)
-) -> ImageRepository:
+) -> IImageRepository:
     return ImageRepository(session)
 
 
@@ -24,7 +28,7 @@ def get_image_reader_adapter(
     return ImageReaderAdapter(session)
 
 
-def create_image_storage(cfg: Config) -> LocalImageStorage:
+def create_image_storage(cfg: Config) -> IImageStorage:
     return LocalImageStorage(
         temp_dir=cfg.sentinel_temp_dir,
         images_dir=cfg.sentinel_images_dir,
@@ -33,13 +37,13 @@ def create_image_storage(cfg: Config) -> LocalImageStorage:
 
 def get_image_storage(
     cfg: Config = Depends(load_config)
-) -> LocalImageStorage:
+) -> IImageStorage:
     return create_image_storage(cfg)
 
 
 def get_redis_cache(
     cfg: Config = Depends(load_config)
-) -> RedisImageCache:
+) -> IImageCache:
     return RedisImageCache(
         host=cfg.redis_host,
         port=cfg.redis_port,
@@ -49,7 +53,7 @@ def get_redis_cache(
 
 def get_sentinel_gateway(
     cfg: Config = Depends(load_config)
-) -> SentinelHubGateway:
+) -> ISentinelGateway:
     return SentinelHubGateway(
         client_id=cfg.sentinel_client_id,
         client_secret=cfg.sentinel_client_secret.get_secret_value(),

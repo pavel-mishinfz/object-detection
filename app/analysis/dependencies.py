@@ -5,25 +5,27 @@ from app.config import Config, load_config
 from app.analysis.contracts import IImageReader
 from app.analysis.infrastructure.detection_engine import YoloDetectionEngine
 from app.analysis.infrastructure.repository import DetectionResultRepository, ObjectTypeRepository
+from app.analysis.interfaces.detection_engine import IDetectionEngine
+from app.analysis.interfaces.repository import IDetectionResultRepository, IObjectTypeRepository
 from app.image.dependencies import get_image_reader_adapter
 from app.shared.database import get_session
 
 
 def get_detection_engine(
     cfg: Config = Depends(load_config)
-) -> YoloDetectionEngine:
+) -> IDetectionEngine:
     return YoloDetectionEngine(cfg.model_path)
 
 
 def get_detection_result_repository(
     session: AsyncSession = Depends(get_session),
-) -> DetectionResultRepository:
+) -> IDetectionResultRepository:
     return DetectionResultRepository(session)
 
 
 def get_object_type_repository(
     session: AsyncSession = Depends(get_session),
-) -> ObjectTypeRepository:
+) -> IObjectTypeRepository:
     return ObjectTypeRepository(session)
 
 

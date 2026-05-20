@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analysis.entity.detection_result import DetectionResult, ObjectType
 from app.analysis.exceptions import NoImagesError
-from app.analysis.infrastructure.detection_engine import YoloDetectionEngine
-from app.analysis.infrastructure.repository import DetectionResultRepository, ObjectTypeRepository
 from app.analysis.contracts import IImageReader
+from app.analysis.interfaces.detection_engine import IDetectionEngine
+from app.analysis.interfaces.repository import IDetectionResultRepository, IObjectTypeRepository
 
 
 # --- Impure functions (commands) ---
@@ -16,9 +16,9 @@ from app.analysis.contracts import IImageReader
 async def run_analysis(
     area_id: UUID,
     image_reader: IImageReader,
-    engine: YoloDetectionEngine,
-    repo: DetectionResultRepository,
-    object_type_repo: ObjectTypeRepository,
+    engine: IDetectionEngine,
+    repo: IDetectionResultRepository,
+    object_type_repo: IObjectTypeRepository,
     session: AsyncSession
 ) -> None:
 
@@ -51,7 +51,7 @@ async def run_analysis(
 
 async def delete_results(
     area_id: UUID,
-    repo: DetectionResultRepository,
+    repo: IDetectionResultRepository,
     session: AsyncSession
 ) -> None:
     await repo.delete_by_area(area_id)
@@ -62,6 +62,6 @@ async def delete_results(
 
 async def get_results(
     area_id: UUID,
-    repo: DetectionResultRepository,
+    repo: IDetectionResultRepository,
 ) -> list[DetectionResult]:
     return await repo.find_by_area(area_id)

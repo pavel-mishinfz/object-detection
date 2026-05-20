@@ -8,10 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.image.dto import TilePreview
 from app.image.entity.image import Image
 from app.image.exceptions import ImageNotFoundError, NoPreviewAvailableError
-from app.image.infrastructure.image_storage import LocalImageStorage
-from app.image.infrastructure.repository import ImageRepository
-from app.image.infrastructure.sentinel_gateway import SentinelHubGateway
-from app.image.infrastructure.image_cache import RedisImageCache
+from app.image.interfaces.image_cache import IImageCache
+from app.image.interfaces.image_storage import IImageStorage
+from app.image.interfaces.repository import IImageRepository
+from app.image.interfaces.sentinel_gateway import ISentinelGateway
 from app.image.services.validators import validate_date_range
 from app.image.contracts import IAreaReader
 from app.shared.contracts import IEventPublisher
@@ -42,9 +42,9 @@ async def fetch_previews(
     date_start: date,
     date_end: date,
     area_reader: IAreaReader,
-    sentinel_gateway: SentinelHubGateway,
-    cache: RedisImageCache,
-    storage: LocalImageStorage,
+    sentinel_gateway: ISentinelGateway,
+    cache: IImageCache,
+    storage: IImageStorage,
 ) -> None:
     validate_date_range(date_start, date_end, date.today())
     coordinates = await area_reader.get_geometry(area_id)
@@ -69,9 +69,9 @@ async def fetch_previews(
 
 async def save_images(
     area_id: UUID,
-    repo: ImageRepository,
-    cache: RedisImageCache,
-    storage: LocalImageStorage,
+    repo: IImageRepository,
+    cache: IImageCache,
+    storage: IImageStorage,
     session: AsyncSession,
 ) -> None:
     cached = await cache.get(area_id)
@@ -101,8 +101,8 @@ async def save_images(
 
 async def delete_images(
     area_id: UUID,
-    repo: ImageRepository,
-    storage: LocalImageStorage,
+    repo: IImageRepository,
+    storage: IImageStorage,
     publisher: IEventPublisher,
     session: AsyncSession,
 ) -> None:
@@ -119,7 +119,7 @@ async def delete_images(
 
 async def get_preview_tiles(
     area_id: UUID,
-    cache: RedisImageCache,
+    cache: IImageCache,
 ) -> list[TilePreview]:
     cached = await cache.get(area_id)
     if cached is None:
@@ -130,15 +130,15 @@ async def get_preview_tiles(
 
 async def get_images(
     area_id: UUID,
-    repo: ImageRepository,
+    repo: IImageRepository,
 ) -> list[Image]:
     return await repo.find_by_area(area_id)
 
 
 async def get_image_as_png(
     image_id: UUID,
-    repo: ImageRepository,
-    storage: LocalImageStorage,
+    repo: IImageRepository,
+    storage: IImageStorage,
 ) -> bytes:
     image = await repo.find_by_id(image_id)
     if image is not None:

@@ -5,7 +5,7 @@ from app.shared.database import get_session
 from app.user.dependencies import get_group_repository
 from app.user.exceptions import GroupNotFoundError, GroupValidationError
 from app.user.infrastructure.auth_backend import auth_backend, fastapi_users
-from app.user.infrastructure.group_repository import GroupRepository
+from app.user.interfaces.repository import IGroupRepository
 from app.user.schemas.group import (
     CreateGroupRequest,
     UpdateGroupReqeust,
@@ -57,7 +57,7 @@ groups_router = APIRouter(prefix="/groups", tags=["groups"])
 @groups_router.post("/", response_model=GroupResponse, status_code=201)
 async def create_group(
     payload: CreateGroupRequest,
-    repo: GroupRepository = Depends(get_group_repository),
+    repo: IGroupRepository = Depends(get_group_repository),
     session: AsyncSession = Depends(get_session),
 ) -> GroupResponse:
     try:
@@ -74,7 +74,7 @@ async def create_group(
 async def get_groups(
     skip: int = 0,
     limit: int = 100,
-    repo: GroupRepository = Depends(get_group_repository),
+    repo: IGroupRepository = Depends(get_group_repository),
 ) -> list[GroupResponse]:
     groups = await group_service.get_groups(skip=skip, limit=limit, repo=repo)
     return [to_group_response(g) for g in groups]
@@ -83,7 +83,7 @@ async def get_groups(
 @groups_router.get("/{group_id}", response_model=GroupResponse)
 async def get_group(
     group_id: int,
-    repo: GroupRepository = Depends(get_group_repository),
+    repo: IGroupRepository = Depends(get_group_repository),
 ) -> GroupResponse:
     try:
         group = await group_service.get_group(group_id=group_id, repo=repo)
@@ -96,7 +96,7 @@ async def get_group(
 async def update_group(
     group_id: int,
     payload: UpdateGroupReqeust,
-    repo: GroupRepository = Depends(get_group_repository),
+    repo: IGroupRepository = Depends(get_group_repository),
     session: AsyncSession = Depends(get_session),
 ) -> GroupResponse:
     try:
@@ -114,7 +114,7 @@ async def update_group(
 @groups_router.delete("/{group_id}", status_code=204)
 async def delete_group(
     group_id: int,
-    repo: GroupRepository = Depends(get_group_repository),
+    repo: IGroupRepository = Depends(get_group_repository),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     try:

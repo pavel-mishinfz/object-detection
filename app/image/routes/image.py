@@ -12,10 +12,10 @@ from app.image.dependencies import (
     get_area_reader
 )
 from app.image.exceptions import InvalidDateRangeError, NoPreviewAvailableError
-from app.image.infrastructure.image_storage import LocalImageStorage
-from app.image.infrastructure.repository import ImageRepository
-from app.image.infrastructure.image_cache import RedisImageCache
-from app.image.infrastructure.sentinel_gateway import SentinelHubGateway
+from app.image.interfaces.image_cache import IImageCache
+from app.image.interfaces.image_storage import IImageStorage
+from app.image.interfaces.repository import IImageRepository
+from app.image.interfaces.sentinel_gateway import ISentinelGateway
 from app.image.schemas.image import (
     FetchPreviewRequest,
     ImageResponse,
@@ -38,9 +38,9 @@ router = APIRouter(prefix="/images", tags=["images"])
 async def preview_images(
     payload: FetchPreviewRequest,
     area_reader: IAreaReader = Depends(get_area_reader),
-    sentinel_gateway: SentinelHubGateway = Depends(get_sentinel_gateway),
-    local_storage: LocalImageStorage = Depends(get_image_storage),
-    redis_cache: RedisImageCache = Depends(get_redis_cache)
+    sentinel_gateway: ISentinelGateway = Depends(get_sentinel_gateway),
+    local_storage: IImageStorage = Depends(get_image_storage),
+    redis_cache: IImageCache = Depends(get_redis_cache)
 ) -> list[PreviewTileResponse]:
     try:
         await image_service.fetch_previews(
@@ -68,9 +68,9 @@ async def preview_images(
 @router.post("/save", response_model=list[ImageResponse], status_code=201)
 async def save_images(
     payload: SaveImagesRequest,
-    repo: ImageRepository = Depends(get_image_repository),
-    storage: LocalImageStorage = Depends(get_image_storage),
-    redis_cache: RedisImageCache = Depends(get_redis_cache),
+    repo: IImageRepository = Depends(get_image_repository),
+    storage: IImageStorage = Depends(get_image_storage),
+    redis_cache: IImageCache = Depends(get_redis_cache),
     session: AsyncSession = Depends(get_session),
 ) -> list[ImageResponse]:
     try:
@@ -97,7 +97,7 @@ async def save_images(
 @router.get("", response_model=list[ImageResponse])
 async def get_images(
     area_id: uuid.UUID,
-    repo: ImageRepository = Depends(get_image_repository),
+    repo: IImageRepository = Depends(get_image_repository),
 ) -> list[ImageResponse]:
     try:
         images = await image_service.get_images(
@@ -114,8 +114,8 @@ async def get_images(
 @router.get("/{image_id}/png")
 async def get_image_as_png(
     image_id: uuid.UUID,
-    repo: ImageRepository = Depends(get_image_repository),
-    storage: LocalImageStorage = Depends(get_image_storage),
+    repo: IImageRepository = Depends(get_image_repository),
+    storage: IImageStorage = Depends(get_image_storage),
 ) -> FastAPIResponse:
     try:
         png_bytes = await image_service.get_image_as_png(
@@ -133,8 +133,8 @@ async def get_image_as_png(
 @router.delete("", status_code=204)
 async def delete_images(
     area_id: uuid.UUID,
-    repo: ImageRepository = Depends(get_image_repository),
-    storage: LocalImageStorage = Depends(get_image_storage),
+    repo: IImageRepository = Depends(get_image_repository),
+    storage: IImageStorage = Depends(get_image_storage),
     publisher: IEventPublisher = Depends(get_event_publisher),
     session: AsyncSession = Depends(get_session),
 ) -> Response:

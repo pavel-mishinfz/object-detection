@@ -11,7 +11,7 @@ from app.map.exceptions import (
     PolygonNotFoundError,
 )
 from app.map.entity.polygon import Coordinate, Polygon
-from app.map.infrastructure.repository import AreaRepository
+from app.map.interfaces.repository import IAreaRepository
 from app.map.services.validators import validate_name, validate_polygon_geometry
 
 
@@ -64,7 +64,7 @@ async def create_polygon(
     user_id: UUID,
     name: str,
     coordinates: tuple[tuple[float, float], ...],
-    repo: AreaRepository,
+    repo: IAreaRepository,
     session: AsyncSession,
 ) -> None:
     count = await repo.count_by_user(user_id)
@@ -91,7 +91,7 @@ async def update_polygon(
     user_id: UUID,
     name: str,
     coordinates: tuple[tuple[float, float], ...],
-    repo: AreaRepository,
+    repo: IAreaRepository,
     session: AsyncSession,
 ) -> None:
     existing = await _get_polygon(polygon_id, repo)
@@ -103,7 +103,7 @@ async def update_polygon(
 
 async def delete_polygon(
     polygon_id: UUID,
-    repo: AreaRepository,
+    repo: IAreaRepository,
     publisher: IEventPublisher,
     session: AsyncSession,
 ) -> None:
@@ -115,18 +115,18 @@ async def delete_polygon(
 
 # --- Impure functions (queries) ---
 
-async def get_polygon(polygon_id: UUID, repo: AreaRepository) -> Polygon:
+async def get_polygon(polygon_id: UUID, repo: IAreaRepository) -> Polygon:
     return await _get_polygon(polygon_id, repo)
 
 
 async def get_user_polygons(
     user_id: UUID,
-    repo: AreaRepository,
+    repo: IAreaRepository,
 ) -> list[Polygon]:
     return await repo.find_by_user(user_id)
 
 
-async def _get_polygon(polygon_id: UUID, repo: AreaRepository) -> Polygon:
+async def _get_polygon(polygon_id: UUID, repo: IAreaRepository) -> Polygon:
     polygon = await repo.find_by_id(polygon_id)
     if polygon is None:
         raise PolygonNotFoundError(f"Полигон {polygon_id} не найден")
@@ -134,7 +134,7 @@ async def _get_polygon(polygon_id: UUID, repo: AreaRepository) -> Polygon:
 
 
 async def _check_name_exists(
-    user_id: UUID, name: str, repo: AreaRepository, polygon_id: UUID | None = None
+    user_id: UUID, name: str, repo: IAreaRepository, polygon_id: UUID | None = None
 ) -> None:
     if await repo.exists_with_name(user_id, name, polygon_id):
         raise PolygonNameConflictError(f"Полигон с именем '{name}' уже существует")

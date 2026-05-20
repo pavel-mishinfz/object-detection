@@ -1,7 +1,5 @@
 import uuid
-from uuid import UUID
 
-from fastapi import Depends
 from fastapi_users import FastAPIUsers
 from fastapi_users.authentication import AuthenticationBackend, BearerTransport
 

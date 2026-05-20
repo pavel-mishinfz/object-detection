@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.user.entity.group import Group
 from app.user.exceptions import GroupNotFoundError
-from app.user.infrastructure.group_repository import GroupRepository
+from app.user.interfaces.repository import IGroupRepository
 from app.user.services.validators import validate_group_name
 
 
@@ -15,14 +15,14 @@ def build_updated_group(existing: Group, name: str) -> Group:
 
 # --- Commands ---
 
-async def create_group(name: str, repo: GroupRepository, session: AsyncSession) -> None:
+async def create_group(name: str, repo: IGroupRepository, session: AsyncSession) -> None:
     validate_group_name(name)
     await repo.save(name)
     await session.commit()
 
 
 async def update_group(
-    group_id: int, name: str, repo: GroupRepository, session: AsyncSession
+    group_id: int, name: str, repo: IGroupRepository, session: AsyncSession
 ) -> None:
     existing = await repo.find_by_id(group_id)
     if existing is None:
@@ -33,7 +33,7 @@ async def update_group(
 
 
 async def delete_group(
-    group_id: int, repo: GroupRepository, session: AsyncSession
+    group_id: int, repo: IGroupRepository, session: AsyncSession
 ) -> None:
     if await repo.find_by_id(group_id) is None:
         raise GroupNotFoundError(f"Группа {group_id} не найдена")
@@ -42,7 +42,7 @@ async def delete_group(
 
 
 async def upsert_group(
-    group_id: int, name: str, repo: GroupRepository, session: AsyncSession
+    group_id: int, name: str, repo: IGroupRepository, session: AsyncSession
 ) -> None:
     validate_group_name(name)
     await repo.upsert(group_id, name)
@@ -51,19 +51,19 @@ async def upsert_group(
 
 # --- Queries ---
 
-async def get_group(group_id: int, repo: GroupRepository) -> Group:
+async def get_group(group_id: int, repo: IGroupRepository) -> Group:
     group = await repo.find_by_id(group_id)
     if group is None:
         raise GroupNotFoundError(f"Группа {group_id} не найдена")
     return group
 
 
-async def get_group_by_name(name: str, repo: GroupRepository) -> Group:
+async def get_group_by_name(name: str, repo: IGroupRepository) -> Group:
     group = await repo.find_by_name(name)
     if group is None:
         raise GroupNotFoundError(f"Группа {name} не найдена")
     return group
 
 
-async def get_groups(skip: int, limit: int, repo: GroupRepository) -> list[Group]:
+async def get_groups(skip: int, limit: int, repo: IGroupRepository) -> list[Group]:
     return await repo.find_all(skip, limit)
