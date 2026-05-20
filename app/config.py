@@ -28,7 +28,7 @@ class Config(BaseSettings):
 
     default_groups_config_path: str = Field(default='default-groups.json')
     default_objects_config_path: str = Field(default='default-objects.json')
-    model_path: str = Field(default='best.pt')
+    model_dir: str = Field(default='models')
 
     model_config = SettingsConfigDict(env_file="app/.env")
 

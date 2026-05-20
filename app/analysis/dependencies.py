@@ -1,26 +1,24 @@
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import Config, load_config
 from app.analysis.contracts import IImageReader
-from app.analysis.infrastructure.detection_engine import YoloDetectionEngine
-from app.analysis.infrastructure.repository import DetectionResultRepository, ObjectTypeRepository
-from app.analysis.interfaces.detection_engine import IDetectionEngine
-from app.analysis.interfaces.repository import IDetectionResultRepository, IObjectTypeRepository
+from app.analysis.infrastructure.repository import ObjectTypeRepository, SegmentationResultRepository
+from app.analysis.infrastructure.segmentation_engine import UNetSegmentationEngine
+from app.analysis.interfaces.repository import IObjectTypeRepository, ISegmentationResultRepository
+from app.analysis.interfaces.segmentation_engine import ISegmentationEngine
+from app.config import Config, load_config
 from app.image.dependencies import get_image_reader_adapter
 from app.shared.database import get_session
 
 
-def get_detection_engine(
-    cfg: Config = Depends(load_config)
-) -> IDetectionEngine:
-    return YoloDetectionEngine(cfg.model_path)
+def get_segmentation_engine(cfg: Config = Depends(load_config)) -> ISegmentationEngine:
+    return UNetSegmentationEngine(cfg.model_dir)
 
 
-def get_detection_result_repository(
+def get_segmentation_result_repository(
     session: AsyncSession = Depends(get_session),
-) -> IDetectionResultRepository:
-    return DetectionResultRepository(session)
+) -> ISegmentationResultRepository:
+    return SegmentationResultRepository(session)
 
 
 def get_object_type_repository(
