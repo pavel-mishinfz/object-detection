@@ -5,6 +5,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analysis.entity.detection_result import DetectionResult, ObjectType
+from app.analysis.interfaces.repository import IDetectionResultRepository, IObjectTypeRepository
 from app.analysis.mappers import (
     to_domain_detection_result, 
     to_domain_object_type, 
@@ -15,7 +16,7 @@ from app.analysis.models.detection_result import DetectionResult as DetectionRes
 from app.analysis.models.detection_result import ObjectType as ObjectTypeRecord
 
 
-class DetectionResultRepository:
+class DetectionResultRepository(IDetectionResultRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
@@ -44,7 +45,7 @@ class DetectionResultRepository:
         await self._session.flush()
 
 
-class ObjectTypeRepository:
+class ObjectTypeRepository(IObjectTypeRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 

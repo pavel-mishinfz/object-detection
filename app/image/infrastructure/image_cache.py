@@ -6,11 +6,12 @@ import redis.asyncio as redis_lib
 
 from app.image.dto import TilePreview
 from app.image.entity.image import ImageBounds
+from app.image.interfaces.image_cache import IImageCache
 
 _TTL_SECONDS = 3600  # 1 hour
 
 
-class RedisImageCache:
+class RedisImageCache(IImageCache):
     def __init__(self, host: str, port: int, db: int) -> None:
         self._redis = redis_lib.Redis(host=host, port=port, db=db, decode_responses=True)
 

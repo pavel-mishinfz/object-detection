@@ -11,9 +11,10 @@ import rasterio
 
 from app.image.entity.image import ImageBounds
 from app.image.exceptions import ImageNotFoundError
+from app.image.interfaces.image_storage import IImageStorage
 
 
-class LocalImageStorage:
+class LocalImageStorage(IImageStorage):
     def __init__(self, temp_dir: str, images_dir: str) -> None:
         self._temp_dir = Path(temp_dir)
         self._images_dir = Path(images_dir)

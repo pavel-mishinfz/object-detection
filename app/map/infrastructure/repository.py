@@ -4,11 +4,12 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.map.entity.polygon import Polygon
+from app.map.interfaces.repository import IAreaRepository
 from app.map.mappers import to_domain, to_orm
 from app.map.models.area import Area
 
 
-class AreaRepository:
+class AreaRepository(IAreaRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 

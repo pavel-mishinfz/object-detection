@@ -6,13 +6,14 @@ from rasterio.transform import xy
 from ultralytics import YOLO
 
 from app.analysis.dto import RawDetection
+from app.analysis.interfaces.detection_engine import IDetectionEngine
 
 _CONF_THRESHOLD = 0.45
 _NMS_IOU = 0.6
 _BATCH_SIZE = 8
 
 
-class YoloDetectionEngine:
+class YoloDetectionEngine(IDetectionEngine):
     def __init__(self, model_path: str) -> None:
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._model = YOLO(model_path)

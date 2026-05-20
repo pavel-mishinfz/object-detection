@@ -15,6 +15,7 @@ from sentinelhub import (
 
 from app.image.dto import TileResult
 from app.image.entity.image import ImageBounds
+from app.image.interfaces.sentinel_gateway import ISentinelGateway
 
 
 _RESOLUTION = 10
@@ -40,7 +41,7 @@ function evaluatePixel(sample) {
 """
 
 
-class SentinelHubGateway:
+class SentinelHubGateway(ISentinelGateway):
     def __init__(self, client_id: str, client_secret: str) -> None:
         self._config = self._make_config(client_id, client_secret)
 

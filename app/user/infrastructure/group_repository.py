@@ -3,11 +3,12 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.user.entity.group import Group
+from app.user.interfaces.repository import IGroupRepository
 from app.user.mappers import to_domain_group
 from app.user.models.group import Group as GroupRecord
 
 
-class GroupRepository:
+class GroupRepository(IGroupRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 

@@ -4,11 +4,12 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.image.entity.image import Image
+from app.image.interfaces.repository import IImageRepository
 from app.image.mappers import to_domain, to_orm
 from app.image.models.image import Image as ImageRecord
 
 
-class ImageRepository:
+class ImageRepository(IImageRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
