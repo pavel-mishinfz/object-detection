@@ -20,7 +20,7 @@ from app.image.interfaces.sentinel_gateway import ISentinelGateway
 
 _RESOLUTION = 10
 _MAX_REQUEST_PX = 2500
-_TILE_PX = 512
+_TILE_PX = 640
 _MAX_CLOUD_COVER = 0.2
 _CDSE_COLLECTION = DataCollection.SENTINEL2_L2A.define_from(
     name="sentinel-2-l2a",

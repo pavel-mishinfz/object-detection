@@ -1,7 +1,7 @@
 import uuid
 
 from geoalchemy2 import Geometry
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UUID
+from sqlalchemy import Column, DateTime, Double, ForeignKey, Integer, String, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -14,16 +14,17 @@ class ObjectType(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(50), nullable=False, unique=True)
 
-    results = relationship("SegmentationResult", back_populates="object_type")
+    results = relationship("DetectionResult", back_populates="object_type")
 
 
-class SegmentationResult(Base):
-    __tablename__ = "segmentation_result"
+class DetectionResult(Base):
+    __tablename__ = "detection_result"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     area_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     image_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     geometry = Column(Geometry(geometry_type="POLYGON", srid=4326), nullable=False)
+    score = Column(Double, nullable=False)
     object_type_id = Column(Integer, ForeignKey("object_type.id"), nullable=False)
     created_at = Column(DateTime, nullable=False, default=func.now())
 

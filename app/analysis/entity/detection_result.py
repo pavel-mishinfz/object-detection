@@ -10,10 +10,11 @@ class ObjectType:
 
 
 @dataclass(frozen=True)
-class SegmentationResult:
+class DetectionResult:
     id: UUID
     area_id: UUID
     image_id: UUID
     geometry: tuple[tuple[float, float], ...]
+    score: float
     object_type: ObjectType
     created_at: datetime

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.analysis.entity.segmentation_result import ObjectType
+from app.analysis.entity.detection_result import ObjectType
 from app.analysis.infrastructure.repository import ObjectTypeRepository
 from app.analysis.routes.analysis import router as analysis_router
 from app.analysis.services.event_handlers import (

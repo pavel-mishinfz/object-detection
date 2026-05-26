@@ -1,14 +1,14 @@
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from app.analysis.entity.segmentation_result import ObjectType, SegmentationResult
+from app.analysis.entity.detection_result import DetectionResult, ObjectType
 
 
-class ISegmentationResultRepository(ABC):
+class IDetectionResultRepository(ABC):
     @abstractmethod
-    async def save(self, result: SegmentationResult) -> None: ...
+    async def save(self, result: DetectionResult) -> None: ...
     @abstractmethod
-    async def find_by_area(self, area_id: UUID) -> list[SegmentationResult]: ...
+    async def find_by_area(self, area_id: UUID) -> list[DetectionResult]: ...
     @abstractmethod
     async def delete_by_area(self, area_id: UUID) -> None: ...
     @abstractmethod

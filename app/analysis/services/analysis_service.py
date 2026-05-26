@@ -4,22 +4,24 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analysis.contracts import IImageReader
-from app.analysis.entity.segmentation_result import SegmentationResult
+from app.analysis.entity.detection_result import DetectionResult, ObjectType
 from app.analysis.exceptions import NoImagesError
-from app.analysis.interfaces.repository import IObjectTypeRepository, ISegmentationResultRepository
-from app.analysis.interfaces.segmentation_engine import ISegmentationEngine
+from app.analysis.contracts import IImageReader
+from app.analysis.interfaces.detection_engine import IDetectionEngine
+from app.analysis.interfaces.repository import IDetectionResultRepository, IObjectTypeRepository
 
 
-async def run_segmentation(
+# --- Impure functions (commands) ---
+
+async def run_analysis(
     area_id: UUID,
-    model_name: str,
     image_reader: IImageReader,
-    engine: ISegmentationEngine,
-    repo: ISegmentationResultRepository,
+    engine: IDetectionEngine,
+    repo: IDetectionResultRepository,
     object_type_repo: IObjectTypeRepository,
-    session: AsyncSession,
+    session: AsyncSession
 ) -> None:
+
     existing = await repo.find_by_area(area_id)
     if existing:
         return
@@ -27,38 +29,39 @@ async def run_segmentation(
     images = await image_reader.get_images_by_area(area_id)
     if not images:
         raise NoImagesError("Нет сохраненных снимков для указанного полигона")
-    
-    await engine.load_model(model_name)
-    all_contours = await engine.segment_batch([img.path for img in images])
+
+    all_detections = await engine.detect_batch([img.path for img in images])
     now = datetime.now()
-    for image, contours in zip(images, all_contours):
-        for raw in contours:
+    for image, detections in zip(images, all_detections):
+        for raw in detections:
             object_type = await object_type_repo.find_by_id(raw.object_type_id)
             if object_type is None:
                 continue
-            result = SegmentationResult(
+            result = DetectionResult(
                 id=uuid.uuid4(),
                 area_id=area_id,
                 image_id=image.id,
                 geometry=raw.geo_polygon,
+                score=raw.score,
                 object_type=object_type,
                 created_at=now,
             )
             await repo.save(result)
     await session.commit()
 
-
-async def delete_segmentation_results(
+async def delete_results(
     area_id: UUID,
-    repo: ISegmentationResultRepository,
-    session: AsyncSession,
+    repo: IDetectionResultRepository,
+    session: AsyncSession
 ) -> None:
     await repo.delete_by_area(area_id)
     await session.commit()
 
 
-async def get_segmentation_results(
+# --- Impure functions (queries) ---
+
+async def get_results(
     area_id: UUID,
-    repo: ISegmentationResultRepository,
-) -> list[SegmentationResult]:
+    repo: IDetectionResultRepository,
+) -> list[DetectionResult]:
     return await repo.find_by_area(area_id)

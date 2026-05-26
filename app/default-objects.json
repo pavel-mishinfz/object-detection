@@ -1,9 +1,3 @@
 [
-    {"id": 1, "name": "background"},
-    {"id": 2, "name": "urban_land"},
-    {"id": 3, "name": "agriculture_land"},
-    {"id": 4, "name": "rangeland"},
-    {"id": 5, "name": "forest_land"},
-    {"id": 6, "name": "water"},
-    {"id": 7, "name": "barren_land"}
+  {"id": 1, "name": "Корабль"}
 ]
